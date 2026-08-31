@@ -16,12 +16,76 @@
 /**
  * A learner's answer to one node of a question.
  *
- * Deliberately opaque: your app never constructs or reads these, it only
- * collects them from `onAnswersChange` and hands them straight back to Edpire.
- * The concrete variants (choice sets, typed blanks, matching pairs, open
- * responses) are exported from the npm package if you ever need to inspect one.
+ * You never construct these -- you collect them from `onAnswersChange` and hand
+ * them straight back to Edpire. They are typed as a discriminated union rather
+ * than an opaque record for one reason: you cannot tell whether a learner has
+ * actually answered without looking inside. Every player emits an answer as
+ * soon as it mounts, so a non-empty array means "a question is on screen", not
+ * "the learner did something". See `isAnswered()` in edpire-answers.ts.
+ *
+ * Mirrors RuntimeAnswer in @youssefalmia/edpire-schema.
  */
-export type EdpireRuntimeAnswer = Record<string, unknown>
+export interface EdpireAnswerBase {
+  nodeId: string
+  timestamp: number
+}
+
+export interface EdpireChoiceSetAnswer extends EdpireAnswerBase {
+  type: 'choiceSet' | 'inlineChoiceSet'
+  answer: { selectedIds: string[] }
+}
+
+/** A blank filled by dragging a word from a pool. */
+export interface EdpireBlankChoiceAnswer extends EdpireAnswerBase {
+  type: 'blank'
+  answer: { mode: 'choice'; choiceId: string; poolId: string; value: string }
+}
+
+/** A blank the learner types into. Emits `text: ""` on mount. */
+export interface EdpireTypedBlankAnswer extends EdpireAnswerBase {
+  type: 'blank'
+  answer: { mode: 'typed'; text: string }
+}
+
+export interface EdpireMatchingSetAnswer extends EdpireAnswerBase {
+  type: 'matchingSet'
+  answer: { connections: Array<{ leftId: string; rightId: string }> }
+}
+
+export interface EdpireAiAnswer extends EdpireAnswerBase {
+  type: 'aiAnswer'
+  answer: { text: string; wordCount: number }
+}
+
+/** Text, file upload, audio or video recording -- or text plus a file. */
+export interface EdpireOpenResponseAnswer extends EdpireAnswerBase {
+  type: 'openResponse'
+  answer: {
+    text?: { content: unknown[]; wordCount: number }
+    files?: Array<{ url: string; mimeType: string; name?: string; duration?: number }>
+    recording?: { url: string; mimeType: string; duration: number; kind: 'audio' | 'video' }
+  }
+}
+
+export interface EdpireMathResponseAnswer extends EdpireAnswerBase {
+  type: 'mathResponse'
+  answer: { latex: string }
+}
+
+export interface EdpireCodingAnswer extends EdpireAnswerBase {
+  type: 'codingResponse'
+  answer: { language: string; source: string; testResults: unknown[] }
+}
+
+export type EdpireRuntimeAnswer =
+  | EdpireChoiceSetAnswer
+  | EdpireBlankChoiceAnswer
+  | EdpireTypedBlankAnswer
+  | EdpireMatchingSetAnswer
+  | EdpireAiAnswer
+  | EdpireOpenResponseAnswer
+  | EdpireMathResponseAnswer
+  | EdpireCodingAnswer
 
 /** Every way an embed can fail before or during an attempt. */
 export type EdpireErrorCode =
@@ -153,6 +217,25 @@ declare global {
 
 // -- Your own backend's response shapes --------------------------------------
 
+/**
+ * The assessment as your backend relays it, trimmed to what this app reads.
+ *
+ * `shared_context` is the reason this type exists at all: `flattenAssessment()`
+ * returns questions only, so an exercise's reading passage, figure or worked
+ * example is not in the steps. Rendering questions without it makes a
+ * comprehension exercise unanswerable, so the Arcade screen keeps the original
+ * assessment around and looks the context up by exercise ID.
+ */
+export interface AssessmentPayload {
+  id: string
+  title: string
+  exercises: Array<{
+    id: string
+    shared_context: unknown | null
+    questions: Array<{ id: string; content_ast: unknown; points: number; sequence_number: number }>
+  }>
+}
+
 export interface AssessmentListItem {
   id: string
   title: string
@@ -165,6 +248,8 @@ export interface CheckResult {
   max_score: number
   /** Keyed by node ID. Hand it to setFeedback() as-is. */
   feedback: Record<string, unknown>
+  /** Not from the API: set locally when a check could not be completed. */
+  message?: string
 }
 
 export interface GradeResult {

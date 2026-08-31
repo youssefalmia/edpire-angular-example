@@ -12,13 +12,13 @@ Same assessment, same catalogue, same results, same webhooks. Only who draws the
 <td width="25%"><img src="docs/screenshots/01-picker.png" alt="Picker listing published assessments by title, with an Exam Hall and an Arcade button on each" /></td>
 <td width="25%"><img src="docs/screenshots/02-examhall.png" alt="The full assessment rendered by the Edpire player inside the Angular app" /></td>
 <td width="25%"><img src="docs/screenshots/03-arcade.png" alt="A single question on its own screen with a progress bar reading one of five" /></td>
-<td width="25%"><img src="docs/screenshots/05-arcade-feedback.png" alt="The same question after checking, showing the marked answer and a next button" /></td>
+<td width="25%"><img src="docs/screenshots/04-arcade-marked.png" alt="The same question after checking, the wrong answer boxed in red with the score beneath" /></td>
 </tr>
 <tr>
 <td align="center"><sub><b>1.</b> Pick by title, not by ID</sub></td>
 <td align="center"><sub><b>2.</b> Exam Hall: the whole paper</sub></td>
-<td align="center"><sub><b>3.</b> Arcade: one question, shuffled</sub></td>
-<td align="center"><sub><b>4.</b> Marked per question</sub></td>
+<td align="center"><sub><b>3.</b> Arcade: one question at a time</sub></td>
+<td align="center"><sub><b>4.</b> Marked, with the answer key</sub></td>
 </tr>
 </table>
 
@@ -188,7 +188,9 @@ q.setFeedback(checkResult.feedback)               // reveal marking after POST /
 q.setContent(steps[++i].content)                  // next question; also clears feedback
 ```
 
-Everything else on that screen — progress bar, buttons, pacing, the shuffle toggle — is ordinary Angular. Replace it with hearts, streaks, a per-question timer or a lesson path; the Edpire side does not change.
+Everything else on that screen — card, progress bar, result banner, pacing, the shuffle toggle — is ordinary Angular. Replace it with hearts, streaks, a per-question timer or a lesson path; the Edpire side does not change.
+
+Two things in that file are not obvious and are worth copying rather than rediscovering: it mounts a **fresh question per step** rather than reusing one with `setContent()`, and it renders the **exercise's shared context** above the question. Both are explained under [Things that will cost you an hour](#things-that-will-cost-you-an-hour).
 
 ### Two different shuffles, don't confuse them
 
@@ -244,6 +246,14 @@ Every one of these is already handled in the code. They are listed because each 
 
 **Pin the SDK version.** `@edpire/sdk` is pre-1.0, so minor releases can change behaviour. `@latest` means your production app changes on someone else's release schedule. `EdpireSdkService.VERSION` pins it. Bump it on purpose.
 
+**Do not page questions with `setContent()`.** It swaps the content and clears the feedback, but it does **not** clear collected answers: the runtime keeps one answer bus for the life of its React root, so `onAnswersChange` keeps reporting every answer that root has ever seen. Page through three questions and the third `/check` is sent the first two questions' answers as well, for nodes that are not on screen. Grading is by node ID so it often still looks right, which is exactly what makes it dangerous — the payloads are wrong long before anything visibly breaks, and the final submit carries the lot. Unmount and mount a fresh question instead. It is one teardown per question, not per keystroke.
+
+**`answers.length > 0` does not mean the learner answered.** Every player emits an answer for its node as soon as it mounts — a typed blank emits `text: ""` on first render. A Check button wired to array length is live on an untouched question, and since `/check` allows three calls per question per session, a learner can burn a third of their allowance on a blank. `edpire/edpire-answers.ts` has the predicate that actually works.
+
+**`flattenAssessment()` returns questions only.** An exercise's shared context — a reading passage, a figure, a worked example — hangs off the exercise, not the question, so it is not in the steps. Drop it and every question in a comprehension exercise becomes unanswerable. Keep the original assessment and look the context up by `exerciseId`; `arcade.component.ts` does.
+
+**Give the question typography; do not restyle its boxes.** The SDK styles what carries meaning — marking colours, blanks, the word bank — and inherits the rest from you on purpose, so questions look like your product. A page with no type scale of its own therefore renders a question with no type scale, which reads as "the SDK is broken" when it is doing exactly what it promises. Set font, colour and line height on the container. Do **not** cap widths: a blank that spans the card is usually the author saying "this answer is a sentence", set per blank in the editor, and a `max-width` silently overrides an authoring decision you cannot see from your side.
+
 **Pass `/check`'s `feedback` through untouched.** The SDK converts it internally. Mapping it yourself is how you get a question that renders blank.
 
 **Set `include_correct_answers` on the server, never from the browser.** It decides whether the response reveals the answer. Read it from the request body and you have handed every learner the key.
@@ -266,6 +276,9 @@ Every one of these is already handled in the code. They are listed because each 
 | "Failed to connect to Edpire" | Usually an origin problem wearing a network problem's clothes. Check the allow-list first |
 | `window.EdpireSDK is undefined` after the script loads | A Content Security Policy allowed the fetch and blocked the execution. Add the CDN to `script-src` |
 | Callback fires, UI does not update | Missing `NgZone.run()` in a zone.js app |
+| `/check` payload contains nodes from earlier questions | You paged with `setContent()`. Mount a fresh question per step |
+| Check button live on an untouched question | You tested `answers.length`, not answer content. See `edpire-answers.ts` |
+| A reading passage is missing in Arcade | It lives on the exercise, not the question. `flattenAssessment()` does not carry it |
 | 429 from `/check` | One `session_id` per attempt, not per question |
 | "This API key does not have the 'write:submissions' scope" | Arcade's final submit needs it. Exam Hall does not, because the embed token authorises that one |
 | Score looks wrong / too low | The assessment has open responses. Check `awaiting_manual_grading` and wait for the webhook |

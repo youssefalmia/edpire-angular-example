@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http'
 import { firstValueFrom } from 'rxjs'
 import type {
   AssessmentListItem,
+  AssessmentPayload,
   CheckResult,
   EdpireRuntimeAnswer,
   EdpireStoredAnswer,
@@ -44,9 +45,9 @@ export class EdpireApiService {
   }
 
   /** Arcade. The assessment content, with answer keys stripped server-side. */
-  getAssessment(assessmentId: string): Promise<unknown> {
+  getAssessment(assessmentId: string): Promise<AssessmentPayload> {
     return firstValueFrom(
-      this.http.get<{ assessment: unknown }>(`/api/edpire/assessments/${assessmentId}`),
+      this.http.get<{ assessment: AssessmentPayload }>(`/api/edpire/assessments/${assessmentId}`),
     ).then((r) => r.assessment)
   }
 
