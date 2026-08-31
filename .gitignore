@@ -1,0 +1,21 @@
+# Secrets. The API key must never be committed: this repo is public, and a
+# leaked key lets anyone mint tokens against your org.
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Angular build output and caches
+dist/
+.angular/
+*.tsbuildinfo
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

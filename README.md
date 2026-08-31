@@ -1,0 +1,311 @@
+# Edpire + Angular
+
+A minimal, working example of embedding [Edpire](https://edpire.com) assessments in an Angular app, in both shapes an integration can take.
+
+**Exam Hall** — Edpire draws the whole paper. One component, one tag, done in an afternoon.
+**Arcade** — you draw the screen, one question at a time, in any order you like. Progress bars, hearts, streaks, pacing: yours.
+
+Same assessment, same catalogue, same results, same webhooks. Only who draws the screen changes.
+
+<table>
+<tr>
+<td width="25%"><img src="docs/screenshots/01-picker.png" alt="Picker listing published assessments by title, with an Exam Hall and an Arcade button on each" /></td>
+<td width="25%"><img src="docs/screenshots/02-examhall.png" alt="The full assessment rendered by the Edpire player inside the Angular app" /></td>
+<td width="25%"><img src="docs/screenshots/03-arcade.png" alt="A single question on its own screen with a progress bar reading one of five" /></td>
+<td width="25%"><img src="docs/screenshots/05-arcade-feedback.png" alt="The same question after checking, showing the marked answer and a next button" /></td>
+</tr>
+<tr>
+<td align="center"><sub><b>1.</b> Pick by title, not by ID</sub></td>
+<td align="center"><sub><b>2.</b> Exam Hall: the whole paper</sub></td>
+<td align="center"><sub><b>3.</b> Arcade: one question, shuffled</sub></td>
+<td align="center"><sub><b>4.</b> Marked per question</sub></td>
+</tr>
+</table>
+
+Screens 2 to 4 are the Edpire SDK. You write screen 1 and about two hundred lines of server code.
+
+---
+
+## What is in here
+
+```
+server/   your backend's Edpire routes, ~200 lines of Node   <- your API key lives here
+app/      the Angular app                                    <- never holds an API key
+```
+
+Five files in `app/src/app/` are the entire integration, and they are worth reading in this order:
+
+| File | What it does |
+|---|---|
+| `edpire/edpire-sdk.types.ts` | Types for the CDN global. Hand-written, zero dependencies |
+| `edpire/edpire-sdk.service.ts` | Loads the CDN bundle once, lazily |
+| `edpire/edpire-api.service.ts` | Every call to *your* backend. No API key, no learner ID |
+| `edpire/edpire-assessment.component.ts` | **Exam Hall in one component.** Copy this file into your app |
+| `pages/arcade.component.ts` | **Arcade.** One question per screen, shuffled if you want |
+
+**`server/` is not a service you deploy.** In your real product it is four routes inside the backend you already have, sitting next to the session they read the learner from. It is a separate folder here only because this example has no existing app to put them in.
+
+---
+
+## Angular does not need npm for this
+
+The `@edpire/sdk` npm package is built for React and declares `react` and `react-dom` as peer dependencies. **Do not install it in an Angular app.**
+
+Use the CDN bundle instead. It carries its own React sealed inside a closure, so:
+
+- your framework is irrelevant to it,
+- your build configuration is irrelevant to it,
+- it does not touch `window.React`, so it cannot collide with anything,
+- there is no npm install, no bundler shim, no `allowSyntheticDefaultImports`.
+
+This is the supported path for Angular, not a fallback. Vue, Svelte, Rails, Django and plain HTML all use the same bundle.
+
+```ts
+// The whole "installation", in edpire-sdk.service.ts
+const script = document.createElement('script')
+script.src = 'https://cdn.jsdelivr.net/npm/@edpire/sdk@0.6.12/dist/umd/index.global.js'
+document.head.appendChild(script)
+// -> window.EdpireSDK
+```
+
+`edpire-sdk.types.ts` gives that global a full TypeScript surface, so `strict: true` and `strictTemplates` stay on. Nothing in this repo uses `any`.
+
+---
+
+## Run it
+
+**Prerequisites:** Node 20.6+, an Edpire API key, and one published assessment.
+
+### 1. Start the server
+
+```bash
+cd server
+npm install
+cp .env.example .env      # paste your EDPIRE_API_KEY into it
+npm start
+```
+
+The key needs three scopes: `read:assessments`, `write:submissions` and `read:results`. Exam Hall works on `read:assessments` alone, so a read-only key looks fine right up until an Arcade attempt ends and the final submit returns 403.
+
+On start it prints the published assessments it can see, which is the quickest way to confirm your key works:
+
+```
+Published assessments (showing up to 10):
+  a63c2173-0792-4178-9219-b9c498c5c40c  Les compléments essentiels - Niveau 3
+  4f2bbd6e-02b8-43fc-8f83-c04915d8602c  Distinguer les verbes conjugués - Niveau 2
+```
+
+If that list is empty, create and publish an assessment in Edpire first. Drafts never appear.
+
+### 2. Allow-list `http://localhost:4200` — do this before step 3
+
+Open Edpire, go to **Integrations → Origins**, and add every origin the player will run on:
+
+```
+http://localhost:4200          <- the Angular dev server. Yes, really, add it
+https://staging.yourapp.com
+https://app.yourapp.com
+```
+
+**Skip this and the player shows "Origin not allowed" on your very first run.** See [The origin allow-list](#the-origin-allow-list) below for why, and why it does not apply to the server routes.
+
+### 3. Run the app
+
+```bash
+cd app
+npm install
+npm start                 # http://localhost:4200
+```
+
+The dev server proxies `/api` to the token server on `:8787` (`proxy.conf.json`), so the browser sees a single origin and there is no CORS between your app and your backend.
+
+---
+
+## Exam Hall, in full
+
+Everything else in this repo is scaffolding. This is the integration:
+
+```html
+<edpire-assessment
+  [assessmentId]="lesson.edpireAssessmentId"
+  (completed)="onScore($event)" />
+```
+
+and, on your server:
+
+```js
+app.post('/api/edpire/token', toNodeHandler(createEdpireTokenHandler({
+  apiKey: process.env.EDPIRE_API_KEY,
+  resolveLearner: async (req) => (await getSession(req.headers))?.user.id ?? null,
+})))
+```
+
+That is it. The component mints the token, loads the bundle, mounts the player, and unmounts on destroy.
+
+### Why a server is required
+
+Your API key must never ship inside the Angular bundle. A bundle is a text file anyone can open, so a key in it is a public key.
+
+Your backend instead mints a **short-lived token**, scoped to one learner and one assessment, expiring in two hours. The browser receives only that.
+
+```
+Angular ──POST /api/edpire/token──▶ your server ──▶ Edpire
+                                    (holds the API key)
+    ◀───────────── { token } ────────────────────────
+    │
+    └──▶ EdpireAssessment.mount({ token, container })
+```
+
+There is a second reason, and it is the one people miss. Something has to answer *"which learner is this?"* in a way the learner cannot forge. If the browser claims to be learner 42, any learner can submit results as any other. That is why the app sends only an assessment ID, never a learner ID.
+
+### Stay in the player after submitting
+
+When the learner submits, the player rewrites itself into the corrected paper: a score banner, per-question marks, and the answer key on anything they missed.
+
+So this example does **not** navigate away in `(completed)`. It records the result and shows a thin bar above, leaving the corrections on screen for as long as the learner wants. Routing away on that callback throws the correction view in the bin, and it is the most common mistake in a first integration.
+
+### Treat the result callback as a UI hint
+
+It is the fastest way to show a score, and it is a client callback. Record the authoritative result server-side from the [`submission.graded` webhook](https://docs.edpire.com/developer/webhooks). If the assessment contains open responses the first score is provisional: check `awaiting_manual_grading` and wait for `submission.grading.completed`.
+
+---
+
+## Arcade: one question per screen, in any order
+
+`pages/arcade.component.ts` is a complete second integration in ~200 lines. Three SDK calls do the work:
+
+```ts
+const steps = sdk.flattenAssessment(assessment)   // flat array, one entry per question
+if (shuffle) steps = shuffled(steps)              // ordinary Fisher-Yates. It's your array
+
+const q = sdk.renderQuestion({                    // one question, into a div you own
+  container: el,
+  content: steps[i].content,
+  onAnswersChange: (answers) => (current = answers),
+})
+
+q.setFeedback(checkResult.feedback)               // reveal marking after POST /check
+q.setContent(steps[++i].content)                  // next question; also clears feedback
+```
+
+Everything else on that screen — progress bar, buttons, pacing, the shuffle toggle — is ordinary Angular. Replace it with hearts, streaks, a per-question timer or a lesson path; the Edpire side does not change.
+
+### Two different shuffles, don't confuse them
+
+|  | Where it lives | Who does it |
+|---|---|---|
+| **Question order** | Your `steps` array | You, in one line, as above |
+| **Answer options inside a question** (choices, drag-drop pools, matching columns) | The question itself, set by the author in the Edpire editor | Already done. The runtime honours it on every render, in both modes |
+
+The second one you get for free and there is nothing to write. The first one is yours precisely because Arcade means you own the sequence.
+
+Shuffling question order is safe: every entry in the submit payload names its own `exerciseId` and `questionId`, so Edpire grades the attempt identically whatever sequence the learner saw.
+
+### `/check` records nothing
+
+`POST /check` is stateless — it grades one question and creates no submission. The attempt only exists once you call `submit()` at the end. Two consequences:
+
+- If the learner closes the tab mid-flow, the attempt is lost. Consider saving answers to `sessionStorage` after each question.
+- `/check` is rate limited to **3 calls per question, per session, per rolling hour**. Generate **one** `session_id` per attempt, not per question — get that wrong and the limit falls back to the learner ref, accumulates across retakes, and 429s a learner who did nothing wrong.
+
+---
+
+## The origin allow-list
+
+Two round trips go from the browser to Edpire directly, rather than through your server: the player fetching its content, and the player submitting. Both are authorised by the embed token — but the browser also has to be on an allow-list, and **origins are matched exactly: scheme, host and port**.
+
+```
+http://localhost:4200      ≠   http://localhost:3000
+https://app.yourapp.com    ≠   https://www.app.yourapp.com
+https://app.yourapp.com    ≠   http://app.yourapp.com
+```
+
+A missing origin is the single most common cause of a blank player on launch day. Send the full list up front, including every developer's local port.
+
+**It does not apply to your server.** `server/server.mjs` calls Edpire with an API key and no `Origin` header, so nothing in the allow-list affects it. This is why the Arcade content and check routes work before you have registered anything, and Exam Hall does not — a difference that looks baffling until you see where each request originates.
+
+Native WebViews send no origin, or an opaque one. Both are handled, and there is nothing to register for mobile.
+
+---
+
+## Things that will cost you an hour
+
+Every one of these is already handled in the code. They are listed because each cost real time to find.
+
+**`http://localhost:4200` is not auto-allowed.** Edpire trusts localhost origins on a *development* Edpire instance. Against production it does not, and it cannot: production has no way to know your laptop from anyone else's. Register the port.
+
+**The container needs an explicit height.** The player fills its container, and a container with no height collapses to zero. The player vanishes with no error and nothing in the console. Hence `:host { height: 100% }` in `edpire-assessment.component.ts`.
+
+**Wrap SDK callbacks in `NgZone.run()`.** `onComplete`, `onError` and `onAnswersChange` originate inside the SDK's own React tree. In a zone.js app they can land outside the Angular zone, and then your UI silently does not update — the classic "the callback fired, I logged it, nothing rendered". In a zoneless app (the Angular 20+ default, and what this example uses) signal writes handle it and `NgZone.run` is a no-op. Wrapping is free in one and saves an afternoon in the other, so wrap.
+
+**Don't template anything inside the mount container.** `renderQuestion()` and `mount()` put a React root in that div. Angular must not manage its children, or the two will fight over the same DOM.
+
+**Load the bundle lazily.** It is around 700 KB gzipped, because it carries React, a maths renderer and a rich-text engine. Put it in `angular.json`'s `scripts` array and every page pays for it. `edpire-sdk.service.ts` fetches it on the screen that needs it, once, cached.
+
+**Pin the SDK version.** `@edpire/sdk` is pre-1.0, so minor releases can change behaviour. `@latest` means your production app changes on someone else's release schedule. `EdpireSdkService.VERSION` pins it. Bump it on purpose.
+
+**Pass `/check`'s `feedback` through untouched.** The SDK converts it internally. Mapping it yourself is how you get a question that renders blank.
+
+**Set `include_correct_answers` on the server, never from the browser.** It decides whether the response reveals the answer. Read it from the request body and you have handed every learner the key.
+
+**Mount the token handler before any body parser.** `toNodeHandler` reads the request stream itself. If `express.json()` already drained it, the request hangs with no error.
+
+**Exam Hall and Arcade need different key scopes.** Exam Hall's submit is authorised by the embed token, so `read:assessments` is enough for the whole flow. Arcade's final `submit()` is authorised by the API key and needs `write:submissions`. A key that runs Exam Hall perfectly will 403 on the last click of an Arcade attempt, which is the worst possible moment to find out.
+
+**`mediaHandler` is required for file uploads and recordings.** If any question asks for one and you have not passed a handler, that question will not work.
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| "Origin not allowed" | `http://localhost:4200` is not registered. Integrations → Origins, exact match including port |
+| The list is empty | Nothing published in your org. Drafts never appear |
+| Player area is blank | The container collapsed to zero height, or the bundle did not load. Check the Network tab for `index.global.js` |
+| "Failed to connect to Edpire" | Usually an origin problem wearing a network problem's clothes. Check the allow-list first |
+| `window.EdpireSDK is undefined` after the script loads | A Content Security Policy allowed the fetch and blocked the execution. Add the CDN to `script-src` |
+| Callback fires, UI does not update | Missing `NgZone.run()` in a zone.js app |
+| 429 from `/check` | One `session_id` per attempt, not per question |
+| "This API key does not have the 'write:submissions' scope" | Arcade's final submit needs it. Exam Hall does not, because the embed token authorises that one |
+| Score looks wrong / too low | The assessment has open responses. Check `awaiting_manual_grading` and wait for the webhook |
+
+---
+
+## What this example leaves out
+
+Deliberately. Bring these from your own app:
+
+- **Authentication.** `resolveLearner` in `server/server.mjs` returns a hardcoded demo learner. That single function is the thing you must replace, and it decides whose results get recorded.
+- **Entitlement.** If content is paid or restricted, check it in the token endpoint and the content route, not only on the screen that opens the player. Both are reachable on their own.
+- **Webhooks.** The authoritative results. See [the webhook guide](https://docs.edpire.com/developer/webhooks).
+- Catalogue, navigation, offline support.
+
+---
+
+## Do I need to import learners first?
+
+No. `learner_ref` is your own user ID, in whatever shape it already has, and the first submission carrying it is what makes that learner exist in your results. There is no import step, no provisioning call, no "activate student" endpoint to wait for.
+
+Everything downstream keys off that string: [`GET /learners/{id}/results?learner_ref=`](https://docs.edpire.com/api-reference/learners/get-learner-results), attempt limits, and the analytics. Pick a stable ID — a database primary key, not an email address that someone will change.
+
+---
+
+## Verified on
+
+Angular 21 (zoneless), TypeScript 5.9, `strict` and `strictTemplates` on, `@edpire/sdk` 0.6.12, Node 24.
+
+The integration code is version-agnostic: a script tag, `NgZone`, and `ElementRef` all work back to Angular 12. Signals and the `@if` template syntax are Angular 17+; on older versions use `*ngIf` and plain fields.
+
+## Documentation
+
+- [Two ways to ship](https://docs.edpire.com/developer/integration-guide) — Exam Hall vs Arcade
+- [Embedded Player](https://docs.edpire.com/developer/sdk/embedded-player) — every option and callback
+- [Custom Flow](https://docs.edpire.com/developer/sdk/custom-flow) — the Arcade reference
+- [Webhooks](https://docs.edpire.com/developer/webhooks) — the authoritative results
+
+There are [React Native](https://github.com/youssefalmia/edpire-react-native-example) and [Flutter](https://github.com/youssefalmia/edpire-flutter-example) versions of this example if you need to compare.
+
+## Licence
+
+MIT for this example. The `@edpire/sdk` bundle it loads carries its own licence.

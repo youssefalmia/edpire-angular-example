@@ -1,0 +1,17 @@
+/*
+ * Your app's styles. Nothing here is required by Edpire.
+ *
+ * The SDK bundles its own CSS, scoped, so it cannot leak into your app and your
+ * CSS framework and its version are irrelevant to it. The one exception is
+ * deliberate: questions rendered by renderQuestion() in Arcade mode inherit
+ * your fonts and colours on purpose, so they look like part of your product.
+ */
+:root {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: #111827;
+  background: #fff;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; }
