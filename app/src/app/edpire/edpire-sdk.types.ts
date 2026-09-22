@@ -4,7 +4,7 @@
  * The bundle is loaded with a script tag, so it arrives as an untyped global.
  * These declarations are the only thing standing between that and `any`, which
  * `strict: true` will not let you get away with anyway. They are hand-written
- * against @edpire/sdk 0.6.12 and cover exactly the four exports the bundle
+ * against @edpire/sdk 0.7.0 and cover exactly the four exports the bundle
  * publishes.
  *
  * You do not need to install @edpire/sdk to use these. If you would rather have
@@ -143,6 +143,18 @@ export interface EdpireMountOptions {
   locale?: 'en' | 'fr' | 'ar'
   /** White-label overrides. Org branding loads automatically without this. */
   branding?: Record<string, unknown>
+  /**
+   * Geometry of the question column. Since @edpire/sdk 0.7.0.
+   *
+   * `container` sizes the player's OUTER box. This sizes the column of
+   * questions inside it, which by default is capped at 48rem (768px) and
+   * centred however wide the outer box is. Two different boxes, and the
+   * distinction is the one people trip on.
+   */
+  layout?: {
+    /** Any CSS length, or 'none' to fill the container. Default '48rem'. */
+    maxWidth?: string
+  }
   /** Shows a "view report" button that navigates here with ?submission_id= appended. */
   returnUrl?: string
   reportLabel?: string

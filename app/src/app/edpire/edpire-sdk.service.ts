@@ -25,7 +25,7 @@ export class EdpireSdkService {
    * behaviour. `@latest` means your production app silently changes on someone
    * else's release schedule. Bump this deliberately.
    */
-  private static readonly VERSION = '0.6.12'
+  private static readonly VERSION = '0.7.0'
 
   private static readonly SRC = `https://cdn.jsdelivr.net/npm/@edpire/sdk@${EdpireSdkService.VERSION}/dist/umd/index.global.js`
 

@@ -63,7 +63,7 @@ This is the supported path for Angular, not a fallback. Vue, Svelte, Rails, Djan
 ```ts
 // The whole "installation", in edpire-sdk.service.ts
 const script = document.createElement('script')
-script.src = 'https://cdn.jsdelivr.net/npm/@edpire/sdk@0.6.12/dist/umd/index.global.js'
+script.src = 'https://cdn.jsdelivr.net/npm/@edpire/sdk@0.7.0/dist/umd/index.global.js'
 document.head.appendChild(script)
 // -> window.EdpireSDK
 ```
@@ -163,6 +163,29 @@ There is a second reason, and it is the one people miss. Something has to answer
 When the learner submits, the player rewrites itself into the corrected paper: a score banner, per-question marks, and the answer key on anything they missed.
 
 So this example does **not** navigate away in `(completed)`. It records the result and shows a thin bar above, leaving the corrections on screen for as long as the learner wants. Routing away on that callback throws the correction view in the bin, and it is the most common mistake in a first integration.
+
+### White space down both sides
+
+The first thing most people notice. `container` sizes the player's **outer box**; inside that, the questions sit in a column capped at `48rem` (768px) and centred. Two different boxes, and the gutter between them shows *your* page background, because the player paints none of its own.
+
+The cap is a reading measure, not an oversight. At the player's base size 768px already gives roughly 70 to 90 characters per line, the top of the comfortable range; past about `60rem` the eye starts losing its place on the return sweep, which costs a learner more on a long comprehension passage than empty gutters ever will.
+
+Keep it when the player owns the page. Override it when you mount inside your own chrome and your container already supplies the measure:
+
+```html
+<edpire-assessment [assessmentId]="id" contentMaxWidth="none" />
+```
+
+```typescript
+// or, if you call mount() yourself
+sdk.EdpireAssessment.mount({ token, container, layout: { maxWidth: 'none' } })
+```
+
+Any CSS length works, so `'60rem'` widens the column without giving up the measure entirely. The value also drives the post-submit score banner, so the two stay aligned. Requires `@edpire/sdk` 0.7.0.
+
+The Exam Hall screen has a switch in its header so you can see both. It is a demo control, not a pattern: pick one value and hard-code it, and never wire it to something a learner can reach mid-attempt, because changing it re-mounts the player and a re-mount discards their answers.
+
+> **Still seeing gutters after `none`?** Then they are yours, not ours. Check the computed width of the element you pass as `container`: if your own layout caps it, the player has no room to expand into and this setting changes nothing. Measure before you change anything — in DevTools, select that element and read `offsetWidth`.
 
 ### Treat the result callback as a UI hint
 
@@ -306,7 +329,7 @@ Everything downstream keys off that string: [`GET /learners/{id}/results?learner
 
 ## Verified on
 
-Angular 21 (zoneless), TypeScript 5.9, `strict` and `strictTemplates` on, `@edpire/sdk` 0.6.12, Node 24.
+Angular 21 (zoneless), TypeScript 5.9, `strict` and `strictTemplates` on, `@edpire/sdk` 0.7.0, Node 24.
 
 The integration code is version-agnostic: a script tag, `NgZone`, and `ElementRef` all work back to Angular 12. Signals and the `@if` template syntax are Angular 17+; on older versions use `*ngIf` and plain fields.
 

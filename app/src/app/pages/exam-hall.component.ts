@@ -15,6 +15,11 @@ import type { EdpireEmbedResult } from '../edpire/edpire-sdk.types'
  * Routing away on the callback throws that away and is the most common mistake
  * in a first integration. Record the result, show a thin bar, leave the
  * corrections on screen.
+ *
+ * The width switch in the header is a demo, not a pattern to copy. Pick one
+ * value in your own app and hard-code it. It is here because "there is white
+ * space down both sides" is the first thing people notice, and seeing the two
+ * side by side explains the cause faster than any paragraph can.
  */
 @Component({
   selector: 'app-exam-hall',
@@ -31,11 +36,25 @@ import type { EdpireEmbedResult } from '../edpire/edpire-sdk.types'
           }
         </span>
       }
+
+      <label class="width">
+        Column
+        <select [value]="width()" (change)="onWidth($event)">
+          <option value="48rem">48rem (default reading measure)</option>
+          <option value="none">none (fill the container)</option>
+        </select>
+      </label>
     </header>
 
+    <!--
+      Changing contentMaxWidth re-mounts the player, which is fine here because
+      nothing has been answered yet. Do not wire it to a control a learner can
+      reach mid-attempt: a re-mount discards their answers.
+    -->
     <edpire-assessment
       class="player"
       [assessmentId]="id()"
+      [contentMaxWidth]="width()"
       (completed)="onCompleted($event)" />
   `,
   styles: `
@@ -46,6 +65,11 @@ import type { EdpireEmbedResult } from '../edpire/edpire-sdk.types'
     .back:hover { color: #111827; }
     .score { margin-left: auto; font-size: .875rem; font-weight: 600; }
     .score em { font-weight: 400; color: #6b7280; font-style: normal; }
+    .width { margin-left: auto; display: flex; align-items: center; gap: .5rem;
+             font-size: .8125rem; color: #6b7280; }
+    .score + .width { margin-left: 0; }
+    .width select { font: inherit; padding: .25rem .5rem; border: 1px solid #e5e7eb;
+                    border-radius: .375rem; background: #fff; color: #111827; }
     /* The player fills what is left. Without a real height it collapses to zero. */
     .player { flex: 1; min-height: 0; }
   `,
@@ -55,6 +79,13 @@ export class ExamHallComponent {
   readonly id = input.required<string>()
 
   protected readonly result = signal<EdpireEmbedResult | null>(null)
+
+  /** Demo only -- see the class comment. Hard-code one value in a real app. */
+  protected readonly width = signal<string>('48rem')
+
+  protected onWidth(event: Event): void {
+    this.width.set((event.target as HTMLSelectElement).value)
+  }
 
   protected onCompleted(result: EdpireEmbedResult): void {
     // A UI hint, not the record of truth. This is a client callback and a

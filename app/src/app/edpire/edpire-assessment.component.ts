@@ -94,6 +94,21 @@ export class EdpireAssessmentComponent implements OnInit {
   readonly locale = input<'en' | 'fr' | 'ar' | undefined>(undefined)
 
   /**
+   * Width of the question column inside the player.
+   *
+   * Leave it alone when the player owns the page: the default 768px cap is a
+   * reading measure, and long question text is materially harder to read
+   * without it. Pass 'none' when you mount the player inside your own layout
+   * and your container already sets the width, otherwise learners get a column
+   * inside a column and a band of your page background down both sides.
+   *
+   * If you still see gutters after setting 'none', they are coming from your
+   * own container, not from the player. Check the computed width of the
+   * element you pass as `container` before changing anything here.
+   */
+  readonly contentMaxWidth = input<string | undefined>(undefined)
+
+  /**
    * Fired when the learner submits. Treat it as a UI hint, not the record of
    * truth: it is a client callback, and a browser can be lied to. The
    * authoritative result arrives on the `submission.graded` webhook.
@@ -154,6 +169,7 @@ export class EdpireAssessmentComponent implements OnInit {
         container: this.hostEl().nativeElement,
         baseUrl: EDPIRE_BASE_URL,
         locale: this.locale(),
+        layout: this.contentMaxWidth() ? { maxWidth: this.contentMaxWidth() } : undefined,
 
         /**
          * WHY ngZone.run()
