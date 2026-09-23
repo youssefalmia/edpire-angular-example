@@ -61,7 +61,7 @@ import type {
   imports: [RouterLink],
   template: `
     <header class="bar">
-      <a routerLink="/" class="back" aria-label="Back to all assessments">&larr;</a>
+      <a routerLink="/modes" class="back" aria-label="Back to all assessments">&larr;</a>
       <span class="bar-title">{{ title() }}</span>
 
       @if (phase() === 'playing') {
@@ -166,7 +166,7 @@ import type {
               provisional. The final one arrives on the submission.grading.completed webhook.
             </p>
           }
-          <a routerLink="/" class="primary as-button">Back to the list</a>
+          <a routerLink="/modes" class="primary as-button">Back to the list</a>
         </section>
       }
     }

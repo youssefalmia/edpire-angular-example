@@ -19,3 +19,6 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+
+# The example server's stand-in for your attempts table. Local data, per machine.
+server/data/

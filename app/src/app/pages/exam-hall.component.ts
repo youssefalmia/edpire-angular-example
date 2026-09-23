@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core'
 import { RouterLink } from '@angular/router'
+import { EdpireApiService } from '../edpire/edpire-api.service'
 import { EdpireAssessmentComponent } from '../edpire/edpire-assessment.component'
 import type { EdpireEmbedResult } from '../edpire/edpire-sdk.types'
 
@@ -27,7 +28,7 @@ import type { EdpireEmbedResult } from '../edpire/edpire-sdk.types'
   imports: [RouterLink, EdpireAssessmentComponent],
   template: `
     <header class="bar">
-      <a routerLink="/" class="back">&larr; All assessments</a>
+      <a routerLink="/modes" class="back">&larr; All assessments</a>
       @if (result(); as r) {
         <span class="score">
           {{ r.score }} / {{ r.max_score }} &middot; {{ r.percentage }}%
@@ -78,6 +79,7 @@ export class ExamHallComponent {
   /** Bound from the `:id` route parameter by withComponentInputBinding(). */
   readonly id = input.required<string>()
 
+  private readonly api = inject(EdpireApiService)
   protected readonly result = signal<EdpireEmbedResult | null>(null)
 
   /** Demo only -- see the class comment. Hard-code one value in a real app. */
@@ -93,5 +95,7 @@ export class ExamHallComponent {
     // the `submission.graded` webhook -- and if the assessment has open
     // responses, the final one only on `submission.grading.completed`.
     this.result.set(result)
+    // So the attempt shows on its card in My assessments. See take.component.ts.
+    this.api.recordAttempt(result.submission_id).catch(() => undefined)
   }
 }

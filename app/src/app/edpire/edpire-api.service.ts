@@ -4,10 +4,13 @@ import { firstValueFrom } from 'rxjs'
 import type {
   AssessmentListItem,
   AssessmentPayload,
+  AttemptSummary,
   CheckResult,
   EdpireRuntimeAnswer,
   EdpireStoredAnswer,
+  EdpireSubmissionReview,
   GradeResult,
+  LibraryCard,
 } from './edpire-sdk.types'
 
 /**
@@ -27,7 +30,49 @@ import type {
 export class EdpireApiService {
   private readonly http = inject(HttpClient)
 
-  /** The picker list. Your product would read its own catalogue instead. */
+  // -- My assessments ---------------------------------------------------------
+
+  /** The cards. Each one already carries its state; the browser decides nothing. */
+  library(): Promise<LibraryCard[]> {
+    return firstValueFrom(this.http.get<{ cards: LibraryCard[] }>('/api/library')).then(
+      (r) => r.cards,
+    )
+  }
+
+  /** One card and the attempts behind it, newest first. */
+  card(assessmentId: string): Promise<{ card: LibraryCard; attempts: AttemptSummary[] }> {
+    return firstValueFrom(
+      this.http.get<{ card: LibraryCard; attempts: AttemptSummary[] }>(
+        `/api/library/${assessmentId}`,
+      ),
+    )
+  }
+
+  /**
+   * "I just finished." Sends only the submission ID: your server reads the
+   * score from Edpire and checks the attempt is this learner's, so there is
+   * nothing here worth tampering with. It makes the card correct the instant
+   * the learner goes back; the webhook would get there too, a little later.
+   */
+  recordAttempt(submissionId: string): Promise<void> {
+    return firstValueFrom(
+      this.http.post('/api/attempts', { submission_id: submissionId }),
+    ).then(() => undefined)
+  }
+
+  /**
+   * One past attempt, as the corrected paper. Hand the result to
+   * EdpireAssessment.review() exactly as it arrives.
+   */
+  review(submissionId: string): Promise<EdpireSubmissionReview> {
+    return firstValueFrom(
+      this.http.get<EdpireSubmissionReview>(`/api/attempts/${submissionId}/review`),
+    )
+  }
+
+  // -- Taking an assessment ---------------------------------------------------
+
+  /** The mode picker list. Your product would read its own catalogue instead. */
   listAssessments(): Promise<AssessmentListItem[]> {
     return firstValueFrom(
       this.http.get<{ assessments: AssessmentListItem[] }>('/api/edpire/assessments'),

@@ -21,7 +21,8 @@ import type { AssessmentListItem } from '../edpire/edpire-sdk.types'
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink],
   template: `
-    <h1>Edpire &times; Angular</h1>
+    <a routerLink="/" class="up">&larr; My assessments</a>
+    <h1>Integration modes</h1>
     <p class="lede">
       The same assessment, delivered two ways. Exam Hall is the whole paper, drawn by
       Edpire. Arcade is one question per screen, drawn by you.
@@ -58,6 +59,7 @@ import type { AssessmentListItem } from '../edpire/edpire-sdk.types'
   `,
   styles: `
     :host { display: block; max-width: 46rem; margin: 0 auto; padding: 3rem 1.5rem; }
+    .up { display: inline-block; margin-bottom: 1.5rem; font-size: .875rem; color: #6b7280; text-decoration: none; }
     h1 { font-size: 1.75rem; margin: 0 0 .5rem; }
     .lede { color: #4b5563; margin: 0 0 2.5rem; line-height: 1.6; }
     .list { list-style: none; padding: 0; margin: 0; }

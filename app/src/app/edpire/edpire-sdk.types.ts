@@ -4,7 +4,7 @@
  * The bundle is loaded with a script tag, so it arrives as an untyped global.
  * These declarations are the only thing standing between that and `any`, which
  * `strict: true` will not let you get away with anyway. They are hand-written
- * against @edpire/sdk 0.7.0 and cover exactly the four exports the bundle
+ * against @edpire/sdk 0.8.0 and cover exactly the four exports the bundle
  * publishes.
  *
  * You do not need to install @edpire/sdk to use these. If you would rather have
@@ -172,6 +172,50 @@ export interface EdpireEmbedInstance {
   unmount(): void
 }
 
+/**
+ * One finished attempt, as `GET /api/v1/submissions/{id}/review` returns it.
+ *
+ * Your server fetches it with the API key and relays it; the browser hands it
+ * to `EdpireAssessment.review()` UNCHANGED. So only `submission` and the title
+ * are typed here, because they are the only parts your own UI reads. The rest
+ * is the player's business, and typing it would only invite mapping it.
+ */
+export interface EdpireSubmissionReview {
+  submission: {
+    id: string
+    assessment_id: string
+    attempt_number: number
+    total_attempts: number
+    score: number
+    max_score: number
+    percentage: number
+    passed: boolean
+    is_fully_graded: boolean
+    /** True while a teacher still has open responses to mark. The player hides the score. */
+    awaiting_manual_grading: boolean
+    submitted_at: string | null
+  }
+  meta: { title: string }
+  assessment: unknown
+  answers: unknown
+  exercise_feedback: unknown
+  branding?: unknown
+}
+
+/** Since @edpire/sdk 0.8.0. */
+export interface EdpireReviewOptions {
+  /** The review payload, passed through untouched. */
+  review: EdpireSubmissionReview
+  /** CSS selector or element. Must have a real height, exactly like mount(). */
+  container: string | HTMLElement
+  locale?: 'en' | 'fr' | 'ar'
+  branding?: Record<string, unknown>
+  layout?: { maxWidth?: string }
+  /** Renders a back button in the player's top bar. */
+  onBack?: () => void
+  backLabel?: string
+}
+
 /** One question, lifted out of the assessment tree into a linear sequence. */
 export interface EdpireFlatStep {
   /** Required by /check, alongside questionId. */
@@ -215,6 +259,8 @@ export interface EdpireStoredAnswer {
 export interface EdpireSdk {
   EdpireAssessment: {
     mount(options: EdpireMountOptions): EdpireEmbedInstance
+    /** Since 0.8.0. A finished attempt as the corrected paper, read-only. No token, no network. */
+    review(options: EdpireReviewOptions): EdpireEmbedInstance
   }
   renderQuestion(options: EdpireRenderQuestionOptions): EdpireQuestionInstance
   flattenAssessment(assessment: unknown): EdpireFlatStep[]
@@ -252,6 +298,42 @@ export interface AssessmentListItem {
   id: string
   title: string
   exerciseCount: number | null
+}
+
+/** One attempt, as your backend's attempts table stores it. */
+export interface AttemptSummary {
+  submissionId: string
+  attemptNumber: number
+  score: number
+  maxScore: number
+  percentage: number
+  passed: boolean | null
+  /** False while a teacher still has to mark open responses: the score is provisional. */
+  isFullyGraded: boolean
+  submittedAt: string
+}
+
+/**
+ * One catalogue card, as your backend computes it. The state machine lives on
+ * the server (`cardFor` in server/attempts.mjs), so every client -- this app, a
+ * mobile app, an email digest -- shows the same thing.
+ *
+ *   new      never attempted                  -> Start
+ *   grading  latest attempt awaits a teacher  -> Review, score withheld
+ *   done     latest attempt fully marked      -> Review, Retry (if attempts left)
+ */
+export interface LibraryCard {
+  id: string
+  title: string
+  category: string | null
+  maxScore: number | null
+  state: 'new' | 'grading' | 'done'
+  attemptsUsed: number
+  /** null = unlimited. */
+  attemptsLeft: number | null
+  canRetry: boolean
+  latest: AttemptSummary | null
+  best: AttemptSummary | null
 }
 
 export interface CheckResult {

@@ -1,15 +1,31 @@
 import { Routes } from '@angular/router'
 
 /**
- * `:id` binds straight to each component's `id` input, because app.config.ts
- * enables withComponentInputBinding(). No ActivatedRoute, no subscription.
+ * `:id` and query parameters bind straight to each component's inputs, because
+ * app.config.ts enables withComponentInputBinding(). No ActivatedRoute, no
+ * subscription.
  *
- * Both routes lazy-load, which matters more than usual here: the Edpire bundle
- * is fetched by the screen that needs it, so the picker stays small.
+ * Every route lazy-loads, which matters more than usual here: the Edpire bundle
+ * is fetched by the screen that needs it, so the card list stays small.
  */
 export const routes: Routes = [
+  // -- My assessments: the flow most products want ---------------------------
   {
     path: '',
+    loadComponent: () => import('./pages/library.component').then((m) => m.LibraryComponent),
+  },
+  {
+    path: 'assessments/:id',
+    loadComponent: () => import('./pages/attempts.component').then((m) => m.AttemptsComponent),
+  },
+  {
+    path: 'assessments/:id/take',
+    loadComponent: () => import('./pages/take.component').then((m) => m.TakeComponent),
+  },
+
+  // -- The two integration modes, side by side --------------------------------
+  {
+    path: 'modes',
     loadComponent: () => import('./pages/picker.component').then((m) => m.PickerComponent),
   },
   {

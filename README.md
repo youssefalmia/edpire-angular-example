@@ -1,6 +1,8 @@
 # Edpire + Angular
 
-A minimal, working example of embedding [Edpire](https://edpire.com) assessments in an Angular app, in both shapes an integration can take.
+A minimal, working example of embedding [Edpire](https://edpire.com) assessments in an Angular app: a learner's assessments as cards, with retry and a review of every past attempt, plus both shapes an integration can take.
+
+**My assessments**: every assessment as a card. Not started, finished with a score, or awaiting a teacher. Retry any of them, or reopen any past attempt as the corrected paper.
 
 **Exam Hall** — Edpire draws the whole paper. One component, one tag, done in an afternoon.
 **Arcade** — you draw the screen, one question at a time, in any order you like. Progress bars, hearts, streaks, pacing: yours.
@@ -24,24 +26,39 @@ Same assessment, same catalogue, same results, same webhooks. Only who draws the
 
 Screens 2 to 4 are the Edpire SDK. You write screen 1 and about two hundred lines of server code.
 
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/05-library.png" alt="A grid of assessment cards: most say Not started with a Start button, one shows a score of 1 out of 2 with Review and Retry buttons, one says Awaiting teacher with Score pending" /></td>
+<td width="50%"><img src="docs/screenshots/06-review.png" alt="One assessment with three attempt tabs; attempt 2 is selected and shown below as the corrected paper, the wrong choice marked in red and the right one outlined in green" /></td>
+</tr>
+<tr>
+<td align="center"><sub><b>5.</b> My assessments: each card knows where the learner stands</sub></td>
+<td align="center"><sub><b>6.</b> Every past attempt, reopened as the corrected paper</sub></td>
+</tr>
+</table>
+
 ---
 
 ## What is in here
 
 ```
-server/   your backend's Edpire routes, ~200 lines of Node   <- your API key lives here
+server/   your backend's Edpire routes, ~450 lines of Node   <- your API key lives here
 app/      the Angular app                                    <- never holds an API key
 ```
 
-Five files in `app/src/app/` are the entire integration, and they are worth reading in this order:
+These files are the entire integration, and they are worth reading in this order:
 
 | File | What it does |
 |---|---|
-| `edpire/edpire-sdk.types.ts` | Types for the CDN global. Hand-written, zero dependencies |
-| `edpire/edpire-sdk.service.ts` | Loads the CDN bundle once, lazily |
-| `edpire/edpire-api.service.ts` | Every call to *your* backend. No API key, no learner ID |
-| `edpire/edpire-assessment.component.ts` | **Exam Hall in one component.** Copy this file into your app |
-| `pages/arcade.component.ts` | **Arcade.** One question per screen, shuffled if you want |
+| `app/.../edpire/edpire-sdk.types.ts` | Types for the CDN global. Hand-written, zero dependencies |
+| `app/.../edpire/edpire-sdk.service.ts` | Loads the CDN bundle once, lazily |
+| `app/.../edpire/edpire-api.service.ts` | Every call to *your* backend. No API key, no learner ID |
+| `app/.../edpire/edpire-assessment.component.ts` | **Exam Hall in one component.** Copy this file into your app |
+| `app/.../edpire/edpire-review.component.ts` | **A past attempt, as the corrected paper.** Copy this one too |
+| `server/attempts.mjs` | **Your attempts table, kept in step with Edpire, turned into cards** |
+| `app/.../pages/library.component.ts` | The cards |
+| `app/.../pages/attempts.component.ts` | One assessment's history, the review, and Retry |
+| `app/.../pages/arcade.component.ts` | **Arcade.** One question per screen, shuffled if you want |
 
 **`server/` is not a service you deploy.** In your real product it is four routes inside the backend you already have, sitting next to the session they read the learner from. It is a separate folder here only because this example has no existing app to put them in.
 
@@ -85,7 +102,7 @@ cp .env.example .env      # paste your EDPIRE_API_KEY into it
 npm start
 ```
 
-The key needs three scopes: `read:assessments`, `write:submissions` and `read:results`. Exam Hall works on `read:assessments` alone, so a read-only key looks fine right up until an Arcade attempt ends and the final submit returns 403.
+The key needs three scopes: `read:assessments`, `write:submissions` and `read:results`. Exam Hall works on `read:assessments` alone, so a read-only key looks fine right up until an Arcade attempt ends and the final submit returns 403. `read:results` is what the cards, the history and the review read from.
 
 On start it prints the published assessments it can see, which is the quickest way to confirm your key works:
 
@@ -118,6 +135,77 @@ npm start                 # http://localhost:4200
 ```
 
 The dev server proxies `/api` to the token server on `:8787` (`proxy.conf.json`), so the browser sees a single origin and there is no CORS between your app and your backend.
+
+---
+
+## My assessments: cards, retry, review
+
+The screen most products want first. Every assessment is a card, and every card knows where this learner stands:
+
+| Card | Shows | Buttons |
+|---|---|---|
+| **Not started** | Points, attempts allowed | Start |
+| **Finished** | The latest score, and the best when it differs | Review, Retry (unless no attempts are left) |
+| **Awaiting teacher** | "Score pending": open responses are not marked yet | Review |
+
+**Review** opens the assessment's history: one tab per attempt, and below it the selected attempt exactly as the learner saw it on submitting. Their answers, locked, each one marked, the expected answer on anything missed, and the teacher's comments once they arrive. **Retry** is just Start again: every token is a new attempt, and Edpire numbers it and enforces the limit.
+
+### The whole design in two sentences
+
+**Store the numbers. Fetch the paper.** Your backend keeps one small table of attempts (who, which assessment, the score) and builds every card from it. When a learner opens a past attempt, your backend asks Edpire for that one attempt and the SDK draws it.
+
+| | Kept by | Why |
+|---|---|---|
+| Your catalogue, and who the learner is | You | It is your product |
+| One row per attempt: score, date, attempt number | You, copied from Edpire | A page of cards costs one query on your database, not an API call per card |
+| Questions, answer keys, the learner's answers, the corrections | Edpire | Large, read one attempt at a time, and they change when a teacher marks. Fetched on demand |
+
+The table, as it would be in your database, is at the top of `server/attempts-store.mjs`. Here it is a JSON file so the example runs without one.
+
+### One function writes it, three things call it
+
+`recordAttempt()` in `server/attempts.mjs` takes a submission ID, reads the attempt from Edpire with the API key, and upserts it. Nothing it is handed is trusted, and writing the same attempt twice is harmless.
+
+| Caller | When | Why |
+|---|---|---|
+| The app, on finish | The player's `(completed)` posts `submission_id` to `POST /api/attempts` | Fast: the card is right when the learner clicks back |
+| The webhook | `POST /api/webhooks/edpire`, on `submission.graded` and `submission.grading.completed` | Reliable: covers a closed tab, and is the only path that sees a teacher finish marking |
+| A backfill | The first time the server sees a learner | Repair: attempts made before this code shipped |
+
+The browser path passes the signed-in learner as well, so posting somebody else's submission ID gets a 404, not their attempt.
+
+### The review, end to end
+
+```js
+// server: ownership first, then Edpire. learnerRef makes a bug in your check a 404.
+if (!ownsAttempt(learner, submissionId)) return json(res, 404, { error: "Attempt not found" })
+return json(res, 200, await client.getSubmissionReview(submissionId, { learnerRef: learner }))
+```
+
+```html
+<!-- Angular: one tag, like the player -->
+<edpire-review [submissionId]="attempt.submissionId" />
+```
+
+Inside, the component calls `EdpireAssessment.review({ review, container })` with the response untouched. There is no token and the browser makes no request to Edpire, so the origin allow-list is not involved. Requires `@edpire/sdk` 0.8.0.
+
+### Things this flow will teach you the hard way
+
+**Do not offer "All attempts" until the attempt is recorded.** A learner who clicks straight through lands on a history that does not have the attempt they just made: your table is only as fresh as its last write. `take.component.ts` shows the link once `POST /api/attempts` has returned.
+
+**Never show a score while `is_fully_graded` is false.** With open responses, the score at submit covers only the automatic questions. Show it as final and you will be taking it back when the teacher marks. Hence the "Awaiting teacher" card.
+
+**Re-read the attempt in the webhook; do not store the payload's numbers.** Deliveries arrive late and out of order. Read the header `X-Edpire-Event` for the event name, verify `X-Edpire-Signature` over the raw bytes, answer 200, then read.
+
+**Review shows the answers.** A learner can read the corrections and retry for full marks. Fine for practice. For anything that counts, cap attempts in Edpire, or record the first attempt's score.
+
+**Attempts made through the SDK or the REST submit before September 2026 cannot be reviewed.** They were stored without per-question detail. Their scores are intact, and the review endpoint says so with a 409.
+
+### Testing the webhook locally
+
+Edpire cannot reach `localhost`, so either tunnel it (`cloudflared tunnel --url http://localhost:8787`, then register `https://<tunnel>/api/webhooks/edpire` under **Integrations → Webhooks**) or skip it: the other two paths keep the cards correct while you develop. Put the webhook's secret in `server/.env` as `EDPIRE_WEBHOOK_SECRET`; without it the route is off.
+
+The full recommendation, independent of Angular, is in the docs: [Attempt History](https://docs.edpire.com/developer/attempt-history).
 
 ---
 
@@ -305,6 +393,9 @@ Every one of these is already handled in the code. They are listed because each 
 | 429 from `/check` | One `session_id` per attempt, not per question |
 | "This API key does not have the 'write:submissions' scope" | Arcade's final submit needs it. Exam Hall does not, because the embed token authorises that one |
 | Score looks wrong / too low | The assessment has open responses. Check `awaiting_manual_grading` and wait for the webhook |
+| A card still says Not started after finishing | `POST /api/attempts` did not land and there is no webhook. The next backfill repairs it; in production, register the webhook |
+| Review says the attempt "was recorded before per-question corrections were kept" | An SDK or REST attempt from before September 2026. Its score is fine; it cannot be drawn |
+| Review returns 403 | The key is missing `read:results` |
 
 ---
 
@@ -314,7 +405,7 @@ Deliberately. Bring these from your own app:
 
 - **Authentication.** `resolveLearner` in `server/server.mjs` returns a hardcoded demo learner. That single function is the thing you must replace, and it decides whose results get recorded.
 - **Entitlement.** If content is paid or restricted, check it in the token endpoint and the content route, not only on the screen that opens the player. Both are reachable on their own.
-- **Webhooks.** The authoritative results. See [the webhook guide](https://docs.edpire.com/developer/webhooks).
+- **A database.** `server/attempts-store.mjs` is a JSON file standing in for one table. The SQL for the real thing is at the top of it.
 - Catalogue, navigation, offline support.
 
 ---
@@ -329,7 +420,7 @@ Everything downstream keys off that string: [`GET /learners/{id}/results?learner
 
 ## Verified on
 
-Angular 21 (zoneless), TypeScript 5.9, `strict` and `strictTemplates` on, `@edpire/sdk` 0.7.0, Node 24.
+Angular 21 (zoneless), TypeScript 5.9, `strict` and `strictTemplates` on, `@edpire/sdk` 0.8.0, Node 24.
 
 The integration code is version-agnostic: a script tag, `NgZone`, and `ElementRef` all work back to Angular 12. Signals and the `@if` template syntax are Angular 17+; on older versions use `*ngIf` and plain fields.
 
@@ -338,6 +429,7 @@ The integration code is version-agnostic: a script tag, `NgZone`, and `ElementRe
 - [Two ways to ship](https://docs.edpire.com/developer/integration-guide) — Exam Hall vs Arcade
 - [Embedded Player](https://docs.edpire.com/developer/sdk/embedded-player) — every option and callback
 - [Custom Flow](https://docs.edpire.com/developer/sdk/custom-flow) — the Arcade reference
+- [Attempt History](https://docs.edpire.com/developer/attempt-history): cards, retry and review: what to store and what to fetch
 - [Webhooks](https://docs.edpire.com/developer/webhooks) — the authoritative results
 
 There are [React Native](https://github.com/youssefalmia/edpire-react-native-example) and [Flutter](https://github.com/youssefalmia/edpire-flutter-example) versions of this example if you need to compare.
