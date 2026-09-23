@@ -4,7 +4,7 @@
  * The bundle is loaded with a script tag, so it arrives as an untyped global.
  * These declarations are the only thing standing between that and `any`, which
  * `strict: true` will not let you get away with anyway. They are hand-written
- * against @edpire/sdk 0.8.0 and cover exactly the four exports the bundle
+ * against @edpire/sdk 0.8.0 and cover exactly the five exports the bundle
  * publishes.
  *
  * You do not need to install @edpire/sdk to use these. If you would rather have
@@ -236,6 +236,8 @@ export interface EdpireRenderQuestionOptions {
   /** The `feedback` field from /check, passed through unmodified. */
   feedback?: Record<string, unknown> | null
   initialAnswers?: EdpireRuntimeAnswer[]
+  /** Since 0.8.0. Answers show but cannot change. For reviewing a past attempt. */
+  readOnly?: boolean
   dir?: 'ltr' | 'rtl'
 }
 
@@ -246,6 +248,26 @@ export interface EdpireQuestionInstance {
   setFeedback(feedback: Record<string, unknown> | null): void
   setInitialAnswers(answers: EdpireRuntimeAnswer[]): void
   unmount(): void
+}
+
+/**
+ * One question of a finished attempt, from `flattenReview()`. Since 0.8.0.
+ * `content`, `answers` and `feedback` go straight into renderQuestion with
+ * `readOnly: true`; the rest is for your own chrome around it.
+ */
+export interface EdpireReviewStep {
+  exerciseId: string
+  questionId: string
+  content: unknown
+  /** The exercise's reading passage or figure, or null. Carried on every step. */
+  sharedContext: unknown | null
+  answers: EdpireRuntimeAnswer[]
+  /** Same shape as /check's feedback. Pass it through untouched. */
+  feedback: Record<string, unknown>
+  score: number
+  maxScore: number
+  status: 'correct' | 'partial' | 'incorrect' | 'awaiting_review' | 'unscored'
+  index: number
 }
 
 /** What one question's answers look like on their way to /submit. */
@@ -264,6 +286,8 @@ export interface EdpireSdk {
   }
   renderQuestion(options: EdpireRenderQuestionOptions): EdpireQuestionInstance
   flattenAssessment(assessment: unknown): EdpireFlatStep[]
+  /** Since 0.8.0. A review payload as one step per question, in assessment order. */
+  flattenReview(review: EdpireSubmissionReview): EdpireReviewStep[]
   buildSubmitPayload(stored: EdpireStoredAnswer[]): unknown
 }
 

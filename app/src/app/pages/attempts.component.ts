@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router'
 import { EdpireApiService } from '../edpire/edpire-api.service'
 import { describeError } from '../edpire/edpire-error'
 import { EdpireReviewComponent } from '../edpire/edpire-review.component'
+import { EdpireReviewStepsComponent } from '../edpire/edpire-review-steps.component'
 import type { AttemptSummary, LibraryCard } from '../edpire/edpire-sdk.types'
 
 /**
@@ -16,13 +17,18 @@ import type { AttemptSummary, LibraryCard } from '../edpire/edpire-sdk.types'
  * it is read one attempt at a time, and it can change when a teacher re-marks.
  * Those two sentences are the whole storage design.
  *
- * The selected attempt lives in the URL (?attempt=), so Back, reload and a
- * shared link all land on the same paper.
+ * Two ways to look at an attempt, same data underneath:
+ *   Whole paper    <edpire-review>        the SDK draws everything at once
+ *   One at a time  <edpire-review-steps>  you draw one locked question per screen
+ * Exam Hall attempts and Arcade attempts can be viewed either way.
+ *
+ * The selected attempt and the view live in the URL (?attempt=, ?view=), so
+ * Back, reload and a shared link all land on the same screen.
  */
 @Component({
   selector: 'app-attempts',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, DatePipe, EdpireReviewComponent],
+  imports: [RouterLink, DatePipe, EdpireReviewComponent, EdpireReviewStepsComponent],
   template: `
     <header class="bar">
       <a routerLink="/" class="back">&larr; My assessments</a>
@@ -53,6 +59,7 @@ import type { AttemptSummary, LibraryCard } from '../edpire/edpire-sdk.types'
             [class.tab--active]="a.submissionId === selectedId()"
             [routerLink]="[]"
             [queryParams]="{ attempt: a.submissionId }"
+            queryParamsHandling="merge"
             replaceUrl>
             <span class="tab-n">Attempt {{ a.attemptNumber }}</span>
             <span class="tab-s" [class.pass]="a.passed && a.isFullyGraded" [class.fail]="a.passed === false && a.isFullyGraded">
@@ -61,10 +68,22 @@ import type { AttemptSummary, LibraryCard } from '../edpire/edpire-sdk.types'
             <span class="tab-d">{{ a.submittedAt | date: 'd MMM, HH:mm' }}</span>
           </a>
         }
+        <div class="views" role="group" aria-label="View">
+          <a class="view" [class.view--on]="!oneAtATime()" [routerLink]="[]"
+             [queryParams]="{ view: null }" queryParamsHandling="merge" replaceUrl>Whole paper</a>
+          <a class="view" [class.view--on]="oneAtATime()" [routerLink]="[]"
+             [queryParams]="{ view: 'steps' }" queryParamsHandling="merge" replaceUrl>One at a time</a>
+        </div>
       </nav>
 
       @if (selectedId(); as id) {
-        <edpire-review class="paper" [submissionId]="id" contentMaxWidth="none" />
+        @if (oneAtATime()) {
+          <div class="steps-wrap">
+            <edpire-review-steps class="steps" [submissionId]="id" />
+          </div>
+        } @else {
+          <edpire-review class="paper" [submissionId]="id" contentMaxWidth="none" />
+        }
       }
     }
   `,
@@ -87,6 +106,12 @@ import type { AttemptSummary, LibraryCard } from '../edpire/edpire-sdk.types'
     .tab-s.pass { color: #1f8a4c; }
     .tab-s.fail { color: #b42318; }
     .tab-d { grid-column: 1 / -1; color: #6b7280; font-size: .75rem; }
+    .views { margin-inline-start: auto; display: flex; align-self: center; border: 1px solid #e5e7eb;
+             border-radius: .5rem; overflow: hidden; flex: none; }
+    .view { padding: .375rem .75rem; font-size: .8125rem; color: #4b5563; text-decoration: none; white-space: nowrap; }
+    .view--on { background: #111827; color: #fff; }
+    .steps-wrap { flex: 1; min-height: 0; overflow-y: auto; }
+    .steps { display: block; max-width: 44rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
     /* The paper fills what is left. Without a real height it collapses to zero. */
     .paper { flex: 1; min-height: 0; }
     .status { padding: 2rem 1.5rem; color: #6b7280; }
@@ -98,6 +123,9 @@ export class AttemptsComponent {
   readonly id = input.required<string>()
   /** `?attempt=` query parameter: the submission to show. Defaults to the latest. */
   readonly attempt = input<string | undefined>(undefined)
+  /** `?view=steps`: one question per screen instead of the whole paper. */
+  readonly view = input<string | undefined>(undefined)
+  protected readonly oneAtATime = computed(() => this.view() === 'steps')
 
   private readonly api = inject(EdpireApiService)
 

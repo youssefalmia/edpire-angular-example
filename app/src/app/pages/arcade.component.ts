@@ -16,6 +16,7 @@ import { EdpireApiService } from '../edpire/edpire-api.service'
 import { isAnswered } from '../edpire/edpire-answers'
 import { describeError } from '../edpire/edpire-error'
 import { EdpireSdkService } from '../edpire/edpire-sdk.service'
+import { EdpireReviewStepsComponent } from '../edpire/edpire-review-steps.component'
 import type {
   AssessmentPayload,
   CheckResult,
@@ -58,7 +59,7 @@ import type {
 @Component({
   selector: 'app-arcade',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink],
+  imports: [RouterLink, EdpireReviewStepsComponent],
   template: `
     <header class="bar">
       <a routerLink="/modes" class="back" aria-label="Back to all assessments">&larr;</a>
@@ -142,7 +143,16 @@ import type {
         </article>
 
         <footer class="actions">
-          @if (!result()) {
+          @if (!result() && currentPoints() === 0) {
+            <!--
+              A question worth nothing (usually one published with no input to
+              answer). Check would stay disabled forever and trap the learner,
+              so let them past it.
+            -->
+            <button class="primary" (click)="skip()">
+              {{ isLastStep() ? 'Finish' : 'Next question' }}
+            </button>
+          } @else if (!result()) {
             <button class="primary" [disabled]="!canCheck() || checking()" (click)="check()">
               {{ checking() ? 'Checking…' : 'Check' }}
             </button>
@@ -166,8 +176,22 @@ import type {
               provisional. The final one arrives on the submission.grading.completed webhook.
             </p>
           }
-          <a routerLink="/modes" class="primary as-button">Back to the list</a>
+          <div class="done-actions">
+            @if (!reviewing()) {
+              <button class="primary" (click)="reviewing.set(true)">Review question by question</button>
+            }
+            <a routerLink="/modes" class="secondary">Back to the list</a>
+          </div>
         </section>
+
+        <!--
+          Back through the attempt, one locked and marked question per screen,
+          in the order the learner just saw them. The attempt is already
+          recorded (the server's submit route did it), so the review can load.
+        -->
+        @if (reviewing() && grade(); as g) {
+          <edpire-review-steps class="review" [submissionId]="g.submission_id" [order]="order()" />
+        }
       }
     }
   `,
@@ -268,6 +292,10 @@ import type {
             line-height: 1.6; }
     .panel .primary { margin: 1.75rem auto 0; display: block; }
     .as-button { display: inline-block; text-decoration: none; }
+    .done-actions { display: flex; flex-direction: column; align-items: center; gap: .75rem; margin-top: 1.75rem; }
+    .done-actions .primary { margin: 0; }
+    .secondary { font-size: .875rem; color: #6b7280; }
+    .review { display: block; margin-top: 2rem; }
     .final-score { font-size: 2.5rem; font-weight: 600; margin: 0;
                    font-variant-numeric: tabular-nums; }
     .final-sub { color: #6b7280; margin: .375rem 0 0; }
@@ -301,6 +329,9 @@ export class ArcadeComponent {
   /** The last /check response, or null while the learner is still working. */
   protected readonly result = signal<CheckResult | null>(null)
   protected readonly grade = signal<GradeResult | null>(null)
+  protected readonly reviewing = signal(false)
+  /** The order the learner saw, shuffled or not, so the review follows it. */
+  protected readonly order = computed(() => this.steps().map((s) => s.questionId))
 
   protected readonly stepNumber = computed(() => this.current() + 1)
   protected readonly isLastStep = computed(() => this.current() >= this.steps().length - 1)
@@ -506,6 +537,18 @@ export class ArcadeComponent {
         answers: this.currentAnswers,
       })
     }
+  }
+
+  /** Past a question with nothing to mark. Its answers still go in the submit. */
+  protected skip(): void {
+    const step = this.steps()[this.current()]
+    if (!step) return
+    this.collected.push({
+      exerciseId: step.exerciseId,
+      questionId: step.questionId,
+      answers: this.currentAnswers,
+    })
+    void this.next()
   }
 
   protected async next(): Promise<void> {

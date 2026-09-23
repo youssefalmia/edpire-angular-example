@@ -5,7 +5,7 @@ A minimal, working example of embedding [Edpire](https://edpire.com) assessments
 **My assessments**: every assessment as a card. Not started, finished with a score, or awaiting a teacher. Retry any of them, or reopen any past attempt as the corrected paper.
 
 **Exam Hall** — Edpire draws the whole paper. One component, one tag, done in an afternoon.
-**Arcade** — you draw the screen, one question at a time, in any order you like. Progress bars, hearts, streaks, pacing: yours.
+**Arcade** — you draw the screen, one question at a time, in any order you like. Progress bars, hearts, streaks, pacing: yours. And afterwards, back through the attempt question by question.
 
 Same assessment, same catalogue, same results, same webhooks. Only who draws the screen changes.
 
@@ -35,6 +35,14 @@ Screens 2 to 4 are the Edpire SDK. You write screen 1 and about two hundred line
 <td align="center"><sub><b>5.</b> My assessments: each card knows where the learner stands</sub></td>
 <td align="center"><sub><b>6.</b> Every past attempt, reopened as the corrected paper</sub></td>
 </tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/08-one-at-a-time.png" alt="The same attempt shown one question at a time: numbered dots coloured by result, the question with the wrong choice marked red and the right one outlined, Previous and Next buttons" /></td>
+<td width="50%"><img src="docs/screenshots/07-arcade-review.png" alt="The end of an Arcade attempt: the score, and below it the attempt replayed question by question in the order it was played, the typed answer crossed out with the expected answer beside it" /></td>
+</tr>
+<tr>
+<td align="center"><sub><b>7.</b> Or one question at a time, any attempt</sub></td>
+<td align="center"><sub><b>8.</b> Arcade: back through the attempt you just played, in the same order</sub></td>
+</tr>
 </table>
 
 ---
@@ -55,6 +63,7 @@ These files are the entire integration, and they are worth reading in this order
 | `app/.../edpire/edpire-api.service.ts` | Every call to *your* backend. No API key, no learner ID |
 | `app/.../edpire/edpire-assessment.component.ts` | **Exam Hall in one component.** Copy this file into your app |
 | `app/.../edpire/edpire-review.component.ts` | **A past attempt, as the corrected paper.** Copy this one too |
+| `app/.../edpire/edpire-review-steps.component.ts` | **A past attempt, one question per screen.** And this one |
 | `server/attempts.mjs` | **Your attempts table, kept in step with Edpire, turned into cards** |
 | `app/.../pages/library.component.ts` | The cards |
 | `app/.../pages/attempts.component.ts` | One assessment's history, the review, and Retry |
@@ -148,7 +157,7 @@ The screen most products want first. Every assessment is a card, and every card 
 | **Finished** | The latest score, and the best when it differs | Review, Retry (unless no attempts are left) |
 | **Awaiting teacher** | "Score pending": open responses are not marked yet | Review |
 
-**Review** opens the assessment's history: one tab per attempt, and below it the selected attempt exactly as the learner saw it on submitting. Their answers, locked, each one marked, the expected answer on anything missed, and the teacher's comments once they arrive. **Retry** is just Start again: every token is a new attempt, and Edpire numbers it and enforces the limit.
+**Review** opens the assessment's history: one tab per attempt, and below it the selected attempt exactly as the learner saw it on submitting, either as the **whole paper** or **one question at a time** (a switch on the page, kept in the URL as `?view=steps`). Their answers, locked, each one marked, the expected answer on anything missed, and the teacher's comments once they arrive. **Retry** is just Start again: every token is a new attempt, and Edpire numbers it and enforces the limit.
 
 ### The whole design in two sentences
 
@@ -189,6 +198,35 @@ return json(res, 200, await client.getSubmissionReview(submissionId, { learnerRe
 
 Inside, the component calls `EdpireAssessment.review({ review, container })` with the response untouched. There is no token and the browser makes no request to Edpire, so the origin allow-list is not involved. Requires `@edpire/sdk` 0.8.0.
 
+### One question at a time
+
+Same endpoint, same response, different drawing. The SDK turns the review into one step per question and you draw each with `renderQuestion`, locked:
+
+```ts
+const steps = sdk.flattenReview(review)   // content, answers, feedback, score, status, sharedContext
+sdk.renderQuestion({
+  container: el,
+  content: steps[i].content,
+  initialAnswers: steps[i].answers,
+  feedback: steps[i].feedback,            // already in /check's shape: pass it through
+  readOnly: true,
+})
+```
+
+```html
+<edpire-review-steps [submissionId]="attempt.submissionId" [order]="questionIdsAsShown" />
+```
+
+The dots, the verdict line and Previous / Next are yours; `edpire-review-steps.component.ts` is one way to draw them. It works for any attempt, whichever way it was taken: the attempts page offers it for Exam Hall attempts too.
+
+**Arcade uses it at the end of an attempt.** The finish screen has **Review question by question**, which pages back through the attempt just played. Arcade shuffles, and Edpire does not record the order an attempt was shown in, so the screen passes its own order as `[order]` and the review follows it.
+
+Three details in that component worth copying:
+
+- **A fresh question per step.** `initialAnswers` are read when a question mounts, so `setContent()` would show the next question with no answers in it.
+- **The passage comes with the step.** `steps[i].sharedContext` is the exercise's reading text or figure. Draw it above the question, or a comprehension question makes no sense on review.
+- **`unscored` is not wrong.** A question worth 0 points has nothing to get wrong. Show it neutral, not red.
+
 ### Things this flow will teach you the hard way
 
 **Do not offer "All attempts" until the attempt is recorded.** A learner who clicks straight through lands on a history that does not have the attempt they just made: your table is only as fresh as its last write. `take.component.ts` shows the link once `POST /api/attempts` has returned.
@@ -196,6 +234,8 @@ Inside, the component calls `EdpireAssessment.review({ review, container })` wit
 **Never show a score while `is_fully_graded` is false.** With open responses, the score at submit covers only the automatic questions. Show it as final and you will be taking it back when the teacher marks. Hence the "Awaiting teacher" card.
 
 **Re-read the attempt in the webhook; do not store the payload's numbers.** Deliveries arrive late and out of order. Read the header `X-Edpire-Event` for the event name, verify `X-Edpire-Signature` over the raw bytes, answer 200, then read.
+
+**A question worth 0 points must not trap an Arcade learner.** It usually means the question was published with nothing to answer. Check waits for an answer and would never enable, so `arcade.component.ts` shows Next on it instead and still sends its (empty) answer with the attempt.
 
 **Review shows the answers.** A learner can read the corrections and retry for full marks. Fine for practice. For anything that counts, cap attempts in Edpire, or record the first attempt's score.
 
@@ -396,6 +436,8 @@ Every one of these is already handled in the code. They are listed because each 
 | A card still says Not started after finishing | `POST /api/attempts` did not land and there is no webhook. The next backfill repairs it; in production, register the webhook |
 | Review says the attempt "was recorded before per-question corrections were kept" | An SDK or REST attempt from before September 2026. Its score is fine; it cannot be drawn |
 | Review returns 403 | The key is missing `read:results` |
+| One-at-a-time review shows the questions with no answers in them | You reused one question with `setContent()`. Mount a fresh one per step |
+| Arcade stuck on a question whose Check never enables | A 0-point question with nothing to answer. Offer Next on it, as `arcade.component.ts` does |
 
 ---
 
