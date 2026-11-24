@@ -4,8 +4,7 @@
  * The bundle is loaded with a script tag, so it arrives as an untyped global.
  * These declarations are the only thing standing between that and `any`, which
  * `strict: true` will not let you get away with anyway. They are hand-written
- * against @edpire/sdk 0.8.0 and cover exactly the five exports the bundle
- * publishes.
+ * against @edpire/sdk 0.12.1 and cover the exports this app uses.
  *
  * You do not need to install @edpire/sdk to use these. If you would rather have
  * the types come from the package itself, `npm i -D @edpire/sdk` and import
@@ -103,14 +102,23 @@ export interface EdpireEmbedError {
   message: string
 }
 
-/** What `onComplete` hands you when the learner submits. */
+/**
+ * What `onComplete` hands you when the learner submits.
+ *
+ * The score fields are `null` when the teacher chose not to show the score to
+ * students (`score_hidden`, since 0.12.0): this object reaches the learner's
+ * browser, so the score is kept out of it. Your server still reads it from
+ * `GET /submissions/{id}` and the webhooks.
+ */
 export interface EdpireEmbedResult {
   submission_id: string
-  score: number
-  max_score: number
-  percentage: number
-  passed: boolean
-  passing_score_percent: number
+  score: number | null
+  max_score: number | null
+  percentage: number | null
+  passed: boolean | null
+  passing_score_percent: number | null
+  /** Since 0.12.0. True when the teacher keeps the score from students. */
+  score_hidden?: boolean
   attempt_number: number
   /**
    * True when the attempt contains open-response questions a teacher has yet to
@@ -119,15 +127,17 @@ export interface EdpireEmbedResult {
    * `submission.grading.completed` webhook.
    */
   awaiting_manual_grading?: boolean
+  /** True when an AI-marked answer has no mark yet: it is being marked, not scored 0. */
+  ai_pending?: boolean
   exercise_results: Array<{
     exercise_id: string
-    total_score: number
-    max_score: number
+    total_score: number | null
+    max_score: number | null
     question_results: Array<{
       question_id: string
-      score: number
+      score: number | null
       correct: boolean
-      points: number
+      points: number | null
     }>
   }>
 }
@@ -135,7 +145,10 @@ export interface EdpireEmbedResult {
 export interface EdpireMountOptions {
   /** The short-lived token your server minted. Never an API key. */
   token: string
-  /** CSS selector or element. Must have a real height or the player collapses. */
+  /**
+   * CSS selector or element. Give it a width; it needs no height. The player is
+   * at least as tall as the screen and the page scrolls (since 0.11.0).
+   */
   container: string | HTMLElement
   /** Defaults to https://edpire.com. */
   baseUrl?: string
@@ -186,13 +199,18 @@ export interface EdpireSubmissionReview {
     assessment_id: string
     attempt_number: number
     total_attempts: number
-    score: number
-    max_score: number
-    percentage: number
-    passed: boolean
+    /** Null with `score_hidden`, as on EdpireEmbedResult. */
+    score: number | null
+    max_score: number | null
+    percentage: number | null
+    passed: boolean | null
+    /** Since 0.12.0. True when the teacher keeps the score from students. */
+    score_hidden?: boolean
     is_fully_graded: boolean
     /** True while a teacher still has open responses to mark. The player hides the score. */
     awaiting_manual_grading: boolean
+    /** True while an AI-marked answer has no mark yet. */
+    ai_pending?: boolean
     submitted_at: string | null
   }
   meta: { title: string }
@@ -206,7 +224,7 @@ export interface EdpireSubmissionReview {
 export interface EdpireReviewOptions {
   /** The review payload, passed through untouched. */
   review: EdpireSubmissionReview
-  /** CSS selector or element. Must have a real height, exactly like mount(). */
+  /** CSS selector or element. A width, no fixed height, exactly like mount(). */
   container: string | HTMLElement
   locale?: 'en' | 'fr' | 'ar'
   branding?: Record<string, unknown>
@@ -261,6 +279,8 @@ export interface EdpireReviewStep {
   content: unknown
   /** The exercise's reading passage or figure, or null. Carried on every step. */
   sharedContext: unknown | null
+  /** Since 0.9.4. The teacher's explanation of the question, as content, or null. */
+  explanation: unknown | null
   answers: EdpireRuntimeAnswer[]
   /** Same shape as /check's feedback. Pass it through untouched. */
   feedback: Record<string, unknown>
@@ -377,4 +397,6 @@ export interface GradeResult {
   percentage: number
   passed: boolean
   awaiting_manual_grading: boolean
+  /** True when an AI-marked answer has no mark yet: the score is provisional. */
+  ai_pending?: boolean
 }

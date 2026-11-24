@@ -31,9 +31,14 @@ import type { EdpireEmbedResult } from '../edpire/edpire-sdk.types'
       <a routerLink="/modes" class="back">&larr; All assessments</a>
       @if (result(); as r) {
         <span class="score">
-          {{ r.score }} / {{ r.max_score }} &middot; {{ r.percentage }}%
-          @if (r.awaiting_manual_grading) {
-            <em>(provisional -- open responses awaiting a teacher)</em>
+          <!-- The teacher can keep the score from students: then it is null here. -->
+          @if (r.score_hidden) {
+            Submitted
+          } @else {
+            {{ r.score }} / {{ r.max_score }} &middot; {{ r.percentage }}%
+          }
+          @if (r.awaiting_manual_grading || r.ai_pending) {
+            <em>(provisional -- some answers are still being marked)</em>
           }
         </span>
       }
@@ -59,7 +64,7 @@ import type { EdpireEmbedResult } from '../edpire/edpire-sdk.types'
       (completed)="onCompleted($event)" />
   `,
   styles: `
-    :host { display: flex; flex-direction: column; height: 100vh; }
+    :host { display: flex; flex-direction: column; min-height: 100vh; }
     .bar { display: flex; align-items: center; gap: 1rem; padding: .75rem 1.5rem;
            border-bottom: 1px solid #e5e7eb; flex: none; }
     .back { color: #6b7280; text-decoration: none; font-size: .875rem; }
@@ -71,8 +76,8 @@ import type { EdpireEmbedResult } from '../edpire/edpire-sdk.types'
     .score + .width { margin-left: 0; }
     .width select { font: inherit; padding: .25rem .5rem; border: 1px solid #e5e7eb;
                     border-radius: .375rem; background: #fff; color: #111827; }
-    /* The player fills what is left. Without a real height it collapses to zero. */
-    .player { flex: 1; min-height: 0; }
+    /* The player grows with the paper and the page scrolls: no fixed height here. */
+    .player { flex: 1; }
   `,
 })
 export class ExamHallComponent {

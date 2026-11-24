@@ -54,22 +54,19 @@ import type {
     }
 
     <!--
-      The player fills its container, so a container with no height collapses to
-      zero and the player vanishes with no error in the console. This is the
-      single most common "it does not work" report. The height lives in the
-      :host style below; never remove it without replacing it.
+      The player is at least as tall as the screen and grows with the paper, so
+      the PAGE scrolls and the player's top bar sticks to the top of the screen
+      (SDK 0.11.0 and later). Give the container a width, never a fixed height:
+      a box of fixed height with overflow hidden cuts the paper off. If the
+      player has to live in a box of its own height (a panel, a modal), give
+      that box overflow: auto.
     -->
     <div #host class="edpire-host"></div>
   `,
   styles: `
     :host {
       display: block;
-      /* Give the player a real height, or it renders into nothing. */
-      height: 100%;
-      min-height: 600px;
-    }
-    .edpire-host {
-      height: 100%;
+      width: 100%;
     }
     .edpire-status {
       padding: 2rem;

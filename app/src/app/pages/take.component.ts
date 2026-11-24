@@ -35,8 +35,10 @@ import type { EdpireEmbedResult } from '../edpire/edpire-sdk.types'
       <a routerLink="/" class="back">&larr; My assessments</a>
       @if (result(); as r) {
         <span class="done">
-          @if (r.awaiting_manual_grading) {
-            Submitted. Your teacher will mark the open answers.
+          @if (r.awaiting_manual_grading || r.ai_pending) {
+            Submitted. Some answers are still being marked.
+          } @else if (r.score_hidden) {
+            Submitted.
           } @else {
             Submitted: {{ r.score }} / {{ r.max_score }} ({{ r.percentage }}%)
           }
@@ -52,15 +54,15 @@ import type { EdpireEmbedResult } from '../edpire/edpire-sdk.types'
     <edpire-assessment class="player" [assessmentId]="id()" (completed)="onCompleted($event)" />
   `,
   styles: `
-    :host { display: flex; flex-direction: column; height: 100vh; }
+    :host { display: flex; flex-direction: column; min-height: 100vh; }
     .bar { display: flex; align-items: center; gap: 1rem; padding: .75rem 1.5rem; border-bottom: 1px solid #e5e7eb; flex: none; }
     .back { color: #6b7280; text-decoration: none; font-size: .875rem; }
     .back:hover { color: #111827; }
     .done { margin-inline-start: auto; font-size: .875rem; font-weight: 600; }
     .btn { border-radius: .5rem; padding: .375rem .75rem; font-size: .8125rem; text-decoration: none; }
     .btn--ghost { color: #dc2626; box-shadow: inset 0 0 0 1px #dc2626; }
-    /* The player fills what is left. Without a real height it collapses to zero. */
-    .player { flex: 1; min-height: 0; }
+    /* The player grows with the paper and the page scrolls: no fixed height here. */
+    .player { flex: 1; }
   `,
 })
 export class TakeComponent {

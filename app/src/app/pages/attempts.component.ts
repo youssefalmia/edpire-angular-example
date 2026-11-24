@@ -88,7 +88,7 @@ import type { AttemptSummary, LibraryCard } from '../edpire/edpire-sdk.types'
     }
   `,
   styles: `
-    :host { display: flex; flex-direction: column; height: 100vh; }
+    :host { display: flex; flex-direction: column; min-height: 100vh; }
     .bar { display: flex; align-items: center; gap: 1rem; padding: .75rem 1.5rem; border-bottom: 1px solid #e5e7eb; flex: none; }
     .back { color: #6b7280; text-decoration: none; font-size: .875rem; white-space: nowrap; }
     .back:hover { color: #111827; }
@@ -110,10 +110,10 @@ import type { AttemptSummary, LibraryCard } from '../edpire/edpire-sdk.types'
              border-radius: .5rem; overflow: hidden; flex: none; }
     .view { padding: .375rem .75rem; font-size: .8125rem; color: #4b5563; text-decoration: none; white-space: nowrap; }
     .view--on { background: #111827; color: #fff; }
-    .steps-wrap { flex: 1; min-height: 0; overflow-y: auto; }
+    .steps-wrap { flex: 1; }
     .steps { display: block; max-width: 44rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
-    /* The paper fills what is left. Without a real height it collapses to zero. */
-    .paper { flex: 1; min-height: 0; }
+    /* The paper grows with its questions and the page scrolls: no fixed height here. */
+    .paper { flex: 1; }
     .status { padding: 2rem 1.5rem; color: #6b7280; }
     .status--error { color: #dc2626; }
   `,

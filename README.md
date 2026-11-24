@@ -89,7 +89,7 @@ This is the supported path for Angular, not a fallback. Vue, Svelte, Rails, Djan
 ```ts
 // The whole "installation", in edpire-sdk.service.ts
 const script = document.createElement('script')
-script.src = 'https://cdn.jsdelivr.net/npm/@edpire/sdk@0.7.0/dist/umd/index.global.js'
+script.src = 'https://cdn.jsdelivr.net/npm/@edpire/sdk@0.12.1/dist/umd/index.global.js'
 document.head.appendChild(script)
 // -> window.EdpireSDK
 ```
@@ -264,11 +264,25 @@ and, on your server:
 ```js
 app.post('/api/edpire/token', toNodeHandler(createEdpireTokenHandler({
   apiKey: process.env.EDPIRE_API_KEY,
-  resolveLearner: async (req) => (await getSession(req.headers))?.user.id ?? null,
+  resolveLearner: async (req) => {
+    const session = await getSession(req.headers)
+    if (!session) return null
+    return { ref: session.user.id, name: session.user.fullName, email: session.user.email }
+  },
 })))
 ```
 
 That is it. The component mints the token, loads the bundle, mounts the player, and unmounts on destroy.
+
+### Show your learners by name
+
+`resolveLearner` returns the learner's name and email with the ref, and the token handler sends them to Edpire. Teachers then see "Amira Ben Salah" on Edpire's results, statistics and grading screens instead of `demo-learner-001`.
+
+- Both are optional. Return the ref alone, as a string, and nothing changes.
+- The name shows on papers already submitted under that ref too, and a new name replaces the old one everywhere.
+- The email shows only on the learner's detail in Edpire and in the results CSV.
+- It needs `@edpire/sdk` 0.12.1 on the server.
+- Names travel only with the token. Arcade's papers take the name the token route last sent for that ref, so a learner who has never opened Exam Hall shows by ref.
 
 ### Why a server is required
 
@@ -387,7 +401,7 @@ Every one of these is already handled in the code. They are listed because each 
 
 **`http://localhost:4200` is not auto-allowed.** Edpire trusts localhost origins on a *development* Edpire instance. Against production it does not, and it cannot: production has no way to know your laptop from anyone else's. Register the port.
 
-**The container needs an explicit height.** The player fills its container, and a container with no height collapses to zero. The player vanishes with no error and nothing in the console. Hence `:host { height: 100% }` in `edpire-assessment.component.ts`.
+**Give the container a width, never a fixed height.** The player is at least as tall as the screen and grows with the paper: the page scrolls and the player's top bar sticks to the top (SDK 0.11.0 and later). A page that is `height: 100vh` with the player in a flex child gives learners two scrollers, and a box with a fixed height and `overflow: hidden` cuts the paper off. Hence `min-height: 100vh` on the pages and no height in `edpire-assessment.component.ts`. A player that must live in a box of its own height (a panel, a modal) needs `overflow: auto` on that box.
 
 **Wrap SDK callbacks in `NgZone.run()`.** `onComplete`, `onError` and `onAnswersChange` originate inside the SDK's own React tree. In a zone.js app they can land outside the Angular zone, and then your UI silently does not update — the classic "the callback fired, I logged it, nothing rendered". In a zoneless app (the Angular 20+ default, and what this example uses) signal writes handle it and `NgZone.run` is a no-op. Wrapping is free in one and saves an afternoon in the other, so wrap.
 
@@ -423,7 +437,10 @@ Every one of these is already handled in the code. They are listed because each 
 |---|---|
 | "Origin not allowed" | `http://localhost:4200` is not registered. Integrations → Origins, exact match including port |
 | The list is empty | Nothing published in your org. Drafts never appear |
-| Player area is blank | The container collapsed to zero height, or the bundle did not load. Check the Network tab for `index.global.js` |
+| Player area is blank | The bundle did not load. Check the Network tab for `index.global.js` |
+| Two scrollbars, or the paper cut off at the bottom | A container with a fixed height around the player. Use `min-height` (SDK 0.11.0 and later) |
+| The score is `null` in `onComplete` or in a review | The teacher set the assessment not to show the score to students (SDK 0.12.0). The browser never gets it; your server reads it from `GET /submissions/{id}` |
+| Teachers see `demo-learner-001`, not a name | `resolveLearner` returns a string, or the server is on `@edpire/sdk` before 0.12.1 |
 | "Failed to connect to Edpire" | Usually an origin problem wearing a network problem's clothes. Check the allow-list first |
 | `window.EdpireSDK is undefined` after the script loads | A Content Security Policy allowed the fetch and blocked the execution. Add the CDN to `script-src` |
 | Callback fires, UI does not update | Missing `NgZone.run()` in a zone.js app |
@@ -462,7 +479,7 @@ Everything downstream keys off that string: [`GET /learners/{id}/results?learner
 
 ## Verified on
 
-Angular 21 (zoneless), TypeScript 5.9, `strict` and `strictTemplates` on, `@edpire/sdk` 0.8.0, Node 24.
+Angular 21 (zoneless), TypeScript 5.9, `strict` and `strictTemplates` on, `@edpire/sdk` 0.12.1, Node 24. Exam Hall, Arcade and both review views were run end to end against a local Edpire on 25 November 2026, on a desktop and at phone width.
 
 The integration code is version-agnostic: a script tag, `NgZone`, and `ElementRef` all work back to Angular 12. Signals and the `@if` template syntax are Angular 17+; on older versions use `*ngIf` and plain fields.
 

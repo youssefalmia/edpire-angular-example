@@ -48,12 +48,11 @@ import type { EdpireEmbedInstance, EdpireSubmissionReview } from './edpire-sdk.t
     @if (status() === 'error') {
       <p class="edpire-status edpire-status--error">{{ errorMessage() }}</p>
     }
-    <!-- Same rule as the player: the container needs a real height. -->
+    <!-- Same rule as the player: a width, no fixed height. The page scrolls. -->
     <div #host class="edpire-host"></div>
   `,
   styles: `
-    :host { display: block; height: 100%; min-height: 600px; }
-    .edpire-host { height: 100%; }
+    :host { display: block; width: 100%; }
     .edpire-status { padding: 2rem; text-align: center; color: #6b7280; font-family: system-ui, sans-serif; }
     .edpire-status--error { color: #dc2626; }
   `,

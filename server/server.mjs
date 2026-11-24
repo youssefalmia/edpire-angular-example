@@ -67,18 +67,26 @@ const client = new EdpireClient({ apiKey: API_KEY, baseUrl: BASE_URL })
  *
  *   async function resolveLearner(req) {
  *     const session = await auth.getSession(req.headers)
- *     return session?.user.id ?? null       // null -> 401
+ *     if (!session) return null              // null -> 401
+ *     return { ref: session.user.id, name: session.user.fullName, email: session.user.email }
  *   }
  *
- * Never read the learner ID from the request body. If you do, any learner can
+ * Never read the learner from the request body. If you do, any learner can
  * submit results as any other by editing one JSON field.
  *
- * The value you return is the `learner_ref`: your own user ID, in whatever
- * shape it already has. You do not create it in Edpire first. The first
- * submission carrying a given ref is what makes that learner exist in results.
+ * `ref` is the `learner_ref`: your own user ID, in whatever shape it already
+ * has. You do not create it in Edpire first. The first submission carrying a
+ * given ref is what makes that learner exist in results.
+ *
+ * `name` and `email` are optional (@edpire/sdk 0.12.1). The token handler sends
+ * them to Edpire, so teachers see "Amira Ben Salah" on Edpire's results and
+ * grading screens instead of "demo-learner-001", on papers already submitted
+ * too. The email shows only on the learner's detail and in the results CSV.
+ * Leave both out and nothing changes. Returning the ref alone, as a string,
+ * also still works.
  */
 function resolveLearner(_req) {
-  return "demo-learner-001"
+  return { ref: "demo-learner-001", name: "Amira Ben Salah", email: "amira@example.com" }
 }
 
 /** The published assessments this org can offer. IDs and titles are not secret. */
@@ -120,6 +128,8 @@ const tokenHandler = toNodeHandler(
   createEdpireTokenHandler({
     apiKey: API_KEY,
     baseUrl: BASE_URL,
+    // The whole { ref, name, email }: the handler mints the token for the ref
+    // and tells Edpire the name and email.
     resolveLearner: (req) => resolveLearner(req),
     /**
      * Optional, omitted here only because this example publishes everything in
@@ -205,7 +215,7 @@ const server = createServer(async (req, res) => {
   // card: the state of every card comes out of one query on your own data.
   if (req.method === "GET" && path === "/api/library") {
     try {
-      const learner = resolveLearner(req)
+      const learner = resolveLearner(req).ref
       await ensureBackfilled(client, learner)
       const items = await getCatalogue()
       const mine = listAttempts(learner)
@@ -221,7 +231,7 @@ const server = createServer(async (req, res) => {
   const cardMatch = path.match(/^\/api\/library\/([^/]+)$/)
   if (req.method === "GET" && cardMatch) {
     try {
-      const learner = resolveLearner(req)
+      const learner = resolveLearner(req).ref
       const assessment = (await getCatalogue()).find((a) => a.id === cardMatch[1])
       if (!assessment) return json(res, 404, { error: "Not in your catalogue" })
       return json(res, 200, {
@@ -243,7 +253,7 @@ const server = createServer(async (req, res) => {
     try {
       const body = await readJsonBody(req)
       if (typeof body.submission_id !== "string") return json(res, 400, { error: "submission_id is required" })
-      const row = await recordAttempt(client, body.submission_id, resolveLearner(req))
+      const row = await recordAttempt(client, body.submission_id, resolveLearner(req).ref)
       return json(res, 200, { attempt: row })
     } catch (err) {
       const { status, message } = explain(err)
@@ -261,7 +271,7 @@ const server = createServer(async (req, res) => {
   // are the same ones the learner saw the moment they submitted.
   const reviewMatch = path.match(/^\/api\/attempts\/([^/]+)\/review$/)
   if (req.method === "GET" && reviewMatch) {
-    const learner = resolveLearner(req)
+    const learner = resolveLearner(req).ref
     const submissionId = reviewMatch[1]
     if (!ownsAttempt(learner, submissionId)) return json(res, 404, { error: "Attempt not found" })
     try {
@@ -355,7 +365,7 @@ const server = createServer(async (req, res) => {
         question_id: body.question_id,
         answers: body.answers ?? [],
         session_id: body.session_id,
-        learner_ref: resolveLearner(req), // from the session, not the body
+        learner_ref: resolveLearner(req).ref, // from the session, not the body
         include_correct_answers: true,
       })
       return json(res, 200, result)
@@ -371,12 +381,13 @@ const server = createServer(async (req, res) => {
   // -- Arcade: record the whole attempt --------------------------------------
   // /check records nothing, so without this call the attempt never happened.
   // One call at the end creates the graded submission and fires the
-  // `submission.graded` webhook.
+  // `submission.graded` webhook. This call carries no name: the paper takes
+  // the one the token route last sent Edpire for this learner_ref.
   const submitMatch = path.match(/^\/api\/edpire\/assessments\/([^/]+)\/submit$/)
   if (req.method === "POST" && submitMatch) {
     try {
       const body = await readJsonBody(req)
-      const learner = resolveLearner(req)
+      const learner = resolveLearner(req).ref
       const result = await client.submit(submitMatch[1], {
         learner_ref: learner, // from the session, not the body
         answers: body.answers ?? [], // flat StoredAnswer[]; the client converts it
