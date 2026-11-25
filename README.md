@@ -89,7 +89,7 @@ This is the supported path for Angular, not a fallback. Vue, Svelte, Rails, Djan
 ```ts
 // The whole "installation", in edpire-sdk.service.ts
 const script = document.createElement('script')
-script.src = 'https://cdn.jsdelivr.net/npm/@edpire/sdk@0.12.1/dist/umd/index.global.js'
+script.src = 'https://cdn.jsdelivr.net/npm/@edpire/sdk@0.12.2/dist/umd/index.global.js'
 document.head.appendChild(script)
 // -> window.EdpireSDK
 ```

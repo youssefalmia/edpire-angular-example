@@ -71,7 +71,7 @@ import type {
         <div class="rs-head">
           <span class="rs-n">Question {{ index() + 1 }} of {{ steps().length }}</span>
           <span class="rs-verdict rs-verdict--{{ s.status }}">{{ label(s) }}</span>
-          @if (s.status !== 'awaiting_review' && s.status !== 'unscored') {
+          @if (!s.scoreHidden && s.status !== 'awaiting_review' && s.status !== 'unscored') {
             <span class="rs-score">{{ s.score }} / {{ s.maxScore }}</span>
           }
         </div>

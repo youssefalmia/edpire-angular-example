@@ -4,7 +4,7 @@
  * The bundle is loaded with a script tag, so it arrives as an untyped global.
  * These declarations are the only thing standing between that and `any`, which
  * `strict: true` will not let you get away with anyway. They are hand-written
- * against @edpire/sdk 0.12.1 and cover the exports this app uses.
+ * against @edpire/sdk 0.12.2 and cover the exports this app uses.
  *
  * You do not need to install @edpire/sdk to use these. If you would rather have
  * the types come from the package itself, `npm i -D @edpire/sdk` and import
@@ -284,8 +284,11 @@ export interface EdpireReviewStep {
   answers: EdpireRuntimeAnswer[]
   /** Same shape as /check's feedback. Pass it through untouched. */
   feedback: Record<string, unknown>
+  /** 0 when `scoreHidden`. */
   score: number
   maxScore: number
+  /** Since 0.12.2. The teacher keeps the score from students: show no points. */
+  scoreHidden: boolean
   status: 'correct' | 'partial' | 'incorrect' | 'awaiting_review' | 'unscored'
   index: number
 }
